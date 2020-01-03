@@ -1,3 +1,4 @@
-import * as wasm from "wasm-gamebuino";
+import { Gamebuino } from "wasm-gamebuino";
 
-wasm.greet();
+const gamebuino = Gamebuino.new();
+gamebuino.dummy();
