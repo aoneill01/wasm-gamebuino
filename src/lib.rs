@@ -31,13 +31,20 @@ enum Instruction {
     SubImm { rs: u8, rd: u8, offset: u8 },
     Sbc { rs: u8, rd: u8 },
     Neg { rs: u8, rd: u8 },
+    Mul { rs: u8, rd: u8 },
     MovImm { rd: u8, offset: u8 },
+    MovReg { rs: u8, rd: u8 },
+    Mvn { rs: u8, rd: u8 },
     CmpImm { rd: u8, offset: u8 },
     CmpReg { rs: u8, rd: u8 },
     Cmn { rs: u8, rd: u8 },
     Tst { rs: u8, rd: u8 },
     And { rs: u8, rd: u8 },
+    Bic { rs: u8, rd: u8 },
     Eor { rs: u8, rd: u8 },
+    Oor { rs: u8, rd: u8 },
+    Bx { rs: u8 },
+    Blx { rm: u8 },
 }
 
 struct CondRegister {
@@ -52,7 +59,12 @@ pub struct Gamebuino {
     instructions: Vec<Instruction>,
     cond_reg: CondRegister,
     registers: [u32; 16],
+    tick_count: u64,
 }
+
+const PC_INDEX: usize = 15;
+const LR_INDEX: usize = 14;
+// const SP_INDEX: usize = 13;
 
 #[wasm_bindgen]
 impl Gamebuino {
@@ -67,6 +79,7 @@ impl Gamebuino {
                 c: false,
             },
             registers: [0; 16],
+            tick_count: 0,
         };
         result.load_sample_instructions();
         result
@@ -81,8 +94,9 @@ impl Gamebuino {
     }
 
     pub fn step(&mut self) {
-        let instruction = *self.instructions.get(0).unwrap();
+        let instruction = *self.instructions.get(1).unwrap();
         self.execute_instruction(instruction);
+        self.increment_pc();
     }
 
     pub fn debug_instruction(&mut self, instruction: u16) {
@@ -93,6 +107,11 @@ impl Gamebuino {
         for _ in 0..steps {
             self.step();
         }
+    }
+
+    fn increment_pc(&mut self) {
+        self.tick_count += 1;
+        self.registers[PC_INDEX] += 1;
     }
 
     fn read_register(&self, register: u8) -> u32 {
@@ -205,9 +224,25 @@ impl Gamebuino {
                 let result = self.add_and_set_condition(0, !self.read_register(rs), 1);
                 self.set_register(rd, result);
             }
+            Instruction::Mul { rs, rd } => {
+                let result = self.read_register(rd) * self.read_register(rs);
+                self.set_register(rd, result);
+                self.set_nz(result);
+            }
             Instruction::MovImm { rd, offset } => {
                 self.set_register(rd, offset as u32);
                 self.set_nz(offset as u32);
+            }
+            Instruction::MovReg { rs, rd } => {
+                self.set_register(rd, self.read_register(rs));
+                if rd as usize == PC_INDEX {
+                    self.increment_pc();
+                }
+            }
+            Instruction::Mvn { rs, rd } => {
+                let result = !self.read_register(rs);
+                self.set_register(rd, result);
+                self.set_nz(result);
             }
             Instruction::CmpImm { rd, offset } => {
                 self.add_and_set_condition(self.read_register(rd), !(offset as u32), 1);
@@ -227,10 +262,29 @@ impl Gamebuino {
                 self.set_register(rd, result);
                 self.set_nz(result);
             }
+            Instruction::Bic { rs, rd } => {
+                let result = self.read_register(rd) & !self.read_register(rs);
+                self.set_register(rd, result);
+                self.set_nz(result);
+            }
             Instruction::Eor { rs, rd } => {
                 let result = self.read_register(rd) ^ self.read_register(rs);
                 self.set_register(rd, result);
                 self.set_nz(result);
+            }
+            Instruction::Oor { rs, rd } => {
+                let result = self.read_register(rd) | self.read_register(rs);
+                self.set_register(rd, result);
+                self.set_nz(result);
+            }
+            Instruction::Bx { rs } => {
+                self.set_register(PC_INDEX as u8, self.read_register(rs) & !1);
+                self.increment_pc();
+            }
+            Instruction::Blx { rm } => {
+                self.set_register(LR_INDEX as u8, (self.read_register(PC_INDEX as u8) - 2) | 1);
+                self.set_register(PC_INDEX as u8, self.read_register(rm) & !1);
+                self.increment_pc();
             }
         }
     }
@@ -314,7 +368,32 @@ impl Gamebuino {
                 0b1001 => Instruction::Neg { rd, rs },
                 0b1010 => Instruction::CmpReg { rd, rs },
                 0b1011 => Instruction::Cmn { rd, rs },
+                0b1100 => Instruction::Oor { rd, rs },
+                0b1101 => Instruction::Mul { rd, rs },
+                0b1110 => Instruction::Bic { rd, rs },
+                0b1111 => Instruction::Mvn { rd, rs },
                 _ => panic!("Unexpected opcode {}", opcode),
+            }
+        } else if (instruction & 0b1111110000000000) == 0b0100010000000000 {
+            let op_h1_h2 = (instruction & 0b0000001111000000) >> 6;
+            let rs_hs = ((instruction & 0b0000000000111000) >> 3) as u8;
+            let rd_hd = (instruction & 0b0000000000000111) as u8;
+            let rm = ((instruction & 0b0000000001111000) >> 3) as u8;
+            match op_h1_h2 {
+                0b0001 => Instruction::AddReg { rd: rd_hd, rs: rs_hs + 8, rn: rd_hd },
+                0b0010 => Instruction::AddReg { rd: rd_hd + 8, rs: rs_hs, rn: rd_hd + 8 },
+                0b0011 => Instruction::AddReg { rd: rd_hd + 8, rs: rs_hs + 8, rn: rd_hd + 8 },
+                0b0101 => Instruction::CmpReg { rs: rs_hs + 8, rd: rd_hd },
+                0b0110 => Instruction::CmpReg { rs: rs_hs, rd: rd_hd + 8 },
+                0b0111 => Instruction::CmpReg { rs: rs_hs + 8, rd: rd_hd + 8 },
+                0b1000 => Instruction::MovReg { rs: rs_hs, rd: rd_hd },
+                0b1001 => Instruction::MovReg { rs: rs_hs + 8, rd: rd_hd },
+                0b1010 => Instruction::MovReg { rs: rs_hs, rd: rd_hd + 8 },
+                0b1011 => Instruction::MovReg { rs: rs_hs + 8, rd: rd_hd + 8 },
+                0b1100 => Instruction::Bx { rs: rs_hs },
+                0b1101 => Instruction::Bx { rs: rs_hs + 8 },
+                0b1110 | 0b1111 => Instruction::Blx { rm },
+                _ => panic!("Unexpected opcode {}", op_h1_h2),
             }
         } else {
             panic!("Unimplemented instruction!");
