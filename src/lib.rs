@@ -18,15 +18,26 @@ macro_rules! log {
 
 #[derive(Debug, Copy, Clone)]
 enum Instruction {
-    Lsl { rs: u8, rd: u8, offset: u8 },
-    Lsr { rs: u8, rd: u8, offset: u8 },
-    Asr { rs: u8, rd: u8, offset: u8 },
+    LslImm { rs: u8, rd: u8, offset: u8 },
+    LslReg { rs: u8, rd: u8 },
+    LsrImm { rs: u8, rd: u8, offset: u8 },
+    LsrReg { rs: u8, rd: u8 },
+    AsrImm { rs: u8, rd: u8, offset: u8 },
+    AsrReg { rs: u8, rd: u8 },
     AddReg { rs: u8, rd: u8, rn: u8 },
     AddImm { rs: u8, rd: u8, offset: u8 },
+    Adc { rs: u8, rd: u8 },
     SubReg { rs: u8, rd: u8, rn: u8 },
     SubImm { rs: u8, rd: u8, offset: u8 },
+    Sbc { rs: u8, rd: u8 },
+    Neg { rs: u8, rd: u8 },
     MovImm { rd: u8, offset: u8 },
     CmpImm { rd: u8, offset: u8 },
+    CmpReg { rs: u8, rd: u8 },
+    Cmn { rs: u8, rd: u8 },
+    Tst { rs: u8, rd: u8 },
+    And { rs: u8, rd: u8 },
+    Eor { rs: u8, rd: u8 },
 }
 
 struct CondRegister {
@@ -62,12 +73,20 @@ impl Gamebuino {
     }
 
     pub fn dummy(&self) {
-        log!("It works! {:?}", &self.instructions);
+        log!(
+            "It works! {:?}\nreg: {:?}",
+            &self.instructions,
+            &self.registers
+        );
     }
 
     pub fn step(&mut self) {
-        let instruction = *self.instructions.get(1).unwrap();
+        let instruction = *self.instructions.get(0).unwrap();
         self.execute_instruction(instruction);
+    }
+
+    pub fn debug_instruction(&mut self, instruction: u16) {
+        self.execute_instruction(Gamebuino::parse_instruction(instruction));
     }
 
     pub fn run(&mut self, steps: usize) {
@@ -89,35 +108,140 @@ impl Gamebuino {
         self.cond_reg.z = value == 0;
     }
 
+    fn add_and_set_condition(&mut self, n1: u32, n2: u32, carry: u32) -> u32 {
+        let (result, overflow1) = n1.overflowing_add(n2);
+        let (result, overflow2) = result.overflowing_add(carry);
+        self.cond_reg.c = overflow1 | overflow2;
+        self.cond_reg.z = result == 0;
+        self.cond_reg.n = (result & 0x80000000) != 0;
+        self.cond_reg.v = ((n1 & 0x80000000) == (n2 & 0x80000000))
+            && ((n1 & 0x80000000) != (result & 0x80000000));
+        result
+    }
+
     fn execute_instruction(&mut self, instruction: Instruction) {
         match instruction {
-            Instruction::Lsl { rs, rd, offset } => {
+            Instruction::LslImm { rs, rd, offset } => {
                 let original = self.read_register(rs);
                 let result = original << offset;
                 self.set_register(rd, result);
                 self.cond_reg.c = original & (1 << offset) != 0;
                 self.set_nz(result);
             }
-            Instruction::Lsr { rs, rd, offset } => {
+            Instruction::LslReg { rs, rd } => {
+                let offset = self.read_register(rs);
+                let original = self.read_register(rd);
+                let result = original << offset;
+                self.set_register(rd, result);
+                self.cond_reg.c = original & (1 << offset) != 0;
+                self.set_nz(result);
+            }
+            Instruction::LsrImm { rs, rd, offset } => {
                 let original = self.read_register(rs);
                 let result = original >> offset;
                 self.set_register(rd, result);
                 self.cond_reg.c = original & (1 << (32 - offset)) != 0;
                 self.set_nz(result);
             }
-            Instruction::Asr { rs, rd, offset } => {
+            Instruction::LsrReg { rs, rd } => {
+                let offset = self.read_register(rs);
+                let original = self.read_register(rd);
+                let result = original >> offset;
+                self.set_register(rd, result);
+                self.cond_reg.c = original & (1 << (32 - offset)) != 0;
+                self.set_nz(result);
+            }
+            Instruction::AsrImm { rs, rd, offset } => {
                 let original = self.read_register(rs) as i32;
                 let result = (original >> offset) as u32;
                 self.set_register(rd, result);
                 self.cond_reg.c = original & (1 << (offset - 1)) != 0;
                 self.set_nz(result);
             }
-            _ => panic!("Unimplemented instruction!"),
+            Instruction::AsrReg { rs, rd } => {
+                let offset = self.read_register(rs);
+                let original = self.read_register(rd) as i32;
+                let result = (original >> offset) as u32;
+                self.set_register(rd, result);
+                self.cond_reg.c = original & (1 << (offset - 1)) != 0;
+                self.set_nz(result);
+            }
+            Instruction::AddReg { rs, rd, rn } => {
+                let result =
+                    self.add_and_set_condition(self.read_register(rs), self.read_register(rn), 0);
+                self.set_register(rd, result);
+            }
+            Instruction::AddImm { rs, rd, offset } => {
+                let result = self.add_and_set_condition(self.read_register(rs), offset as u32, 0);
+                self.set_register(rd, result);
+            }
+            Instruction::Adc { rs, rd } => {
+                let result = self.add_and_set_condition(
+                    self.read_register(rs),
+                    self.read_register(rd),
+                    if self.cond_reg.c { 1 } else { 0 },
+                );
+                self.set_register(rd, result);
+            }
+            Instruction::SubReg { rs, rd, rn } => {
+                let result =
+                    self.add_and_set_condition(self.read_register(rs), !self.read_register(rn), 1);
+                self.set_register(rd, result);
+            }
+            Instruction::SubImm { rs, rd, offset } => {
+                let result =
+                    self.add_and_set_condition(self.read_register(rs), !(offset as u32), 1);
+                self.set_register(rd, result);
+            }
+            Instruction::Sbc { rs, rd } => {
+                let result = self.add_and_set_condition(
+                    self.read_register(rs),
+                    !self.read_register(rd),
+                    if self.cond_reg.c { 1 } else { 0 },
+                );
+                self.set_register(rd, result);
+            }
+            Instruction::Neg { rs, rd } => {
+                let result = self.add_and_set_condition(0, !self.read_register(rs), 1);
+                self.set_register(rd, result);
+            }
+            Instruction::MovImm { rd, offset } => {
+                self.set_register(rd, offset as u32);
+                self.set_nz(offset as u32);
+            }
+            Instruction::CmpImm { rd, offset } => {
+                self.add_and_set_condition(self.read_register(rd), !(offset as u32), 1);
+            }
+            Instruction::CmpReg { rd, rs } => {
+                self.add_and_set_condition(self.read_register(rd), !self.read_register(rs), 1);
+            }
+            Instruction::Cmn { rd, rs } => {
+                self.add_and_set_condition(self.read_register(rd), self.read_register(rs), 0);
+            }
+            Instruction::Tst { rs, rd } => {
+                let result = self.read_register(rd) & self.read_register(rs);
+                self.set_nz(result);
+            }
+            Instruction::And { rs, rd } => {
+                let result = self.read_register(rd) & self.read_register(rs);
+                self.set_register(rd, result);
+                self.set_nz(result);
+            }
+            Instruction::Eor { rs, rd } => {
+                let result = self.read_register(rd) ^ self.read_register(rs);
+                self.set_register(rd, result);
+                self.set_nz(result);
+            }
         }
     }
 
     fn load_sample_instructions(&mut self) {
-        let data: Vec<u16> = vec![0b0000000100001010, 0b0001000100001011, 0b0010000000000000];
+        let data: Vec<u16> = vec![
+            0b0000000100001010,
+            0b0001000100001011,
+            0b0001110001000000,
+            0b0010000000000000,
+        ];
         for instruction in data.iter().map(|i| Gamebuino::parse_instruction(*i)) {
             self.instructions.push(instruction);
         }
@@ -131,9 +255,9 @@ impl Gamebuino {
                 let opcode = (instruction & 0b0001100000000000) >> 11;
                 let offset = ((instruction & 0b0000011111000000) >> 6) as u8;
                 match opcode {
-                    0 => Instruction::Lsl { rs, rd, offset },
-                    1 => Instruction::Lsr { rs, rd, offset },
-                    2 => Instruction::Asr { rs, rd, offset },
+                    0 => Instruction::LslImm { rs, rd, offset },
+                    1 => Instruction::LsrImm { rs, rd, offset },
+                    2 => Instruction::AsrImm { rs, rd, offset },
                     _ => panic!("Unexpected opcode {}", opcode),
                 }
             } else {
@@ -172,6 +296,24 @@ impl Gamebuino {
                 0b01 => Instruction::CmpImm { rd, offset },
                 0b10 => Instruction::AddImm { rs: rd, rd, offset },
                 0b11 => Instruction::SubImm { rs: rd, rd, offset },
+                _ => panic!("Unexpected opcode {}", opcode),
+            }
+        } else if (instruction & 0b1111110000000000) == 0b0100000000000000 {
+            let opcode = (instruction & 0b0000001111000000) >> 6;
+            let rs = ((instruction & 0b0000000000111000) >> 3) as u8;
+            let rd = (instruction & 0b0000000000000111) as u8;
+            match opcode {
+                0b0000 => Instruction::And { rd, rs },
+                0b0001 => Instruction::Eor { rd, rs },
+                0b0010 => Instruction::LslReg { rd, rs },
+                0b0011 => Instruction::LsrReg { rd, rs },
+                0b0100 => Instruction::AsrReg { rd, rs },
+                0b0101 => Instruction::Adc { rd, rs },
+                0b0110 => Instruction::Sbc { rd, rs },
+                0b1000 => Instruction::Tst { rd, rs },
+                0b1001 => Instruction::Neg { rd, rs },
+                0b1010 => Instruction::CmpReg { rd, rs },
+                0b1011 => Instruction::Cmn { rd, rs },
                 _ => panic!("Unexpected opcode {}", opcode),
             }
         } else {
