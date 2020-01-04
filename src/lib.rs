@@ -45,6 +45,9 @@ enum Instruction {
     Oor { rs: u8, rd: u8 },
     Bx { rs: u8 },
     Blx { rm: u8 },
+    LdrPc { rd: u8, immediate_value: u32 },
+    LdrReg { rb: u8, ro: u8, rd: u8 },
+    Ldrb { rb: u8, ro: u8, rd: u8 },
 }
 
 struct CondRegister {
@@ -59,6 +62,8 @@ pub struct Gamebuino {
     instructions: Vec<Instruction>,
     cond_reg: CondRegister,
     registers: [u32; 16],
+    flash: [u8; 0x40000],
+    sram: [u8; 0x8000],
     tick_count: u64,
 }
 
@@ -79,6 +84,8 @@ impl Gamebuino {
                 c: false,
             },
             registers: [0; 16],
+            flash: [0xff; 0x40000],
+            sram: [0xff; 0x8000],
             tick_count: 0,
         };
         result.load_sample_instructions();
@@ -94,7 +101,7 @@ impl Gamebuino {
     }
 
     pub fn step(&mut self) {
-        let instruction = *self.instructions.get(1).unwrap();
+        let instruction = *self.instructions.get(0).unwrap();
         self.execute_instruction(instruction);
         self.increment_pc();
     }
@@ -112,6 +119,32 @@ impl Gamebuino {
     fn increment_pc(&mut self) {
         self.tick_count += 1;
         self.registers[PC_INDEX] += 1;
+    }
+
+    fn fetch_word(&self, address: u32) -> u32 {
+        let addr = address as usize;
+        if addr < 0x20000000 {
+            let addr = addr % 0x40000;
+            self.flash[addr] as u32 | (self.flash[addr + 1] as u32) << 8  | (self.flash[addr + 2] as u32) << 16 | (self.flash[addr + 3] as u32) << 24
+        } else if addr < 0x40000000 {
+            let addr = (addr - 0x20000000) % 0x8000;
+            self.sram[addr] as u32 | (self.sram[addr + 1] as u32) << 8  | (self.sram[addr + 2] as u32) << 16 | (self.sram[addr + 3] as u32) << 24
+        } else {
+            0
+        }
+    }
+
+    fn fetch_byte(&self, address: u32) -> u8 {
+        let addr = address as usize;
+        if addr < 0x20000000 {
+            let addr = addr % 0x40000;
+            self.flash[addr]
+        } else if addr < 0x40000000 {
+            let addr = (addr - 0x20000000) % 0x8000;
+            self.sram[addr]
+        } else {
+            0
+        }
     }
 
     fn read_register(&self, register: u8) -> u32 {
@@ -286,6 +319,18 @@ impl Gamebuino {
                 self.set_register(PC_INDEX as u8, self.read_register(rm) & !1);
                 self.increment_pc();
             }
+            Instruction::LdrPc { rd, immediate_value } => {
+                let result = self.fetch_word((self.read_register(PC_INDEX as u8) & !0b11) + immediate_value);
+                self.set_register(rd, result);
+            }
+            Instruction::LdrReg { rb, ro, rd } => {
+                let result = self.fetch_word(self.read_register(rb) + self.read_register(ro));
+                self.set_register(rd, result);
+            }
+            Instruction::Ldrb { rb, ro, rd } => {
+                let result = self.fetch_byte(self.read_register(rb) + self.read_register(ro));
+                self.set_register(rd, result as u32);
+            }
         }
     }
 
@@ -295,6 +340,7 @@ impl Gamebuino {
             0b0001000100001011,
             0b0001110001000000,
             0b0010000000000000,
+            0b0100110000001000,
         ];
         for instruction in data.iter().map(|i| Gamebuino::parse_instruction(*i)) {
             self.instructions.push(instruction);
@@ -394,6 +440,20 @@ impl Gamebuino {
                 0b1101 => Instruction::Bx { rs: rs_hs + 8 },
                 0b1110 | 0b1111 => Instruction::Blx { rm },
                 _ => panic!("Unexpected opcode {}", op_h1_h2),
+            }
+        } else if (instruction & 0b1111100000000000) == 0b0100100000000000 {
+            let rd = ((instruction & 0b0000011100000000) >> 8) as u8;
+            let immediate_value = ((instruction & 0xff) << 2) as u32;
+            Instruction::LdrPc { rd, immediate_value }
+        } else if (instruction & 0b1111001000000000) == 0b0101000000000000 {
+            let lb = (instruction & 0b0000110000000000) >> 10;
+            let ro = ((instruction & 0b0000000111000000) >> 6) as u8;
+            let rb = ((instruction & 0b0000000000111000) >> 3) as u8;
+            let rd = (instruction & 0b0000000000000111) as u8;
+            match lb {
+                0b10 => Instruction::LdrReg { rb, ro, rd },
+                0b11 => Instruction::Ldrb { rb, ro, rd },
+                _ => panic!("Unexpected lb {}", lb),
             }
         } else {
             panic!("Unimplemented instruction!");
