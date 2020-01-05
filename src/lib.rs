@@ -26,6 +26,8 @@ enum Instruction {
     AsrReg { rs: u8, rd: u8 },
     AddReg { rs: u8, rd: u8, rn: u8 },
     AddImm { rs: u8, rd: u8, offset: u8 },
+    AddSp { rd: u8, offset: u32 },
+    AddPc { rd: u8, offset: u32 },
     Adc { rs: u8, rd: u8 },
     SubReg { rs: u8, rd: u8, rn: u8 },
     SubImm { rs: u8, rd: u8, offset: u8 },
@@ -51,13 +53,19 @@ enum Instruction {
     LdrImm { rb: u8, offset: u32, rd: u8 },
     LdrbImm { rb: u8, offset: u32, rd: u8 },
     Ldsb { rb: u8, ro: u8, rd: u8 },
-    Ldrh { rb: u8, ro: u8, rd: u8 },
+    LdrhReg { rb: u8, ro: u8, rd: u8 },
+    LdrhImm { rb: u8, offset: u32, rd: u8 },
     Ldsh { rb: u8, ro: u8, rd: u8 },
     StrReg { rb: u8, ro: u8, rd: u8 },
     StrbReg { rb: u8, ro: u8, rd: u8 },
     StrImm { rb: u8, offset: u32, rd: u8 },
     StrbImm { rb: u8, offset: u32, rd: u8 },
-    Strh { rb: u8, ro: u8, rd: u8 }
+    StrhReg { rb: u8, ro: u8, rd: u8 },
+    StrhImm { rb: u8, offset: u32, rd: u8 },
+    Sxth { rd: u8, rm: u8 },
+    Sxtb { rd: u8, rm: u8 },
+    Uxth { rd: u8, rm: u8 },
+    Uxtb { rd: u8, rm: u8 },
 }
 
 struct CondRegister {
@@ -78,8 +86,8 @@ pub struct Gamebuino {
 }
 
 const PC_INDEX: usize = 15;
-const LR_INDEX: usize = 14;
-// const SP_INDEX: usize = 13;
+const LR_INDEX: u8 = 14;
+const SP_INDEX: u8 = 13;
 
 #[wasm_bindgen]
 impl Gamebuino {
@@ -284,6 +292,12 @@ impl Gamebuino {
                 let result = self.add_and_set_condition(self.read_register(rs), offset as u32, 0);
                 self.set_register(rd, result);
             }
+            Instruction::AddSp { rd, offset } => {
+                self.set_register(rd, self.read_register(SP_INDEX) + offset);
+            }
+            Instruction::AddPc { rd, offset } => {
+                self.set_register(rd, (self.read_register(PC_INDEX as u8) & !0b11) + offset);
+            }
             Instruction::Adc { rs, rd } => {
                 let result = self.add_and_set_condition(
                     self.read_register(rs),
@@ -315,9 +329,10 @@ impl Gamebuino {
                 self.set_register(rd, result);
             }
             Instruction::Mul { rs, rd } => {
-                let result = self.read_register(rd) * self.read_register(rs);
+                let (result, overflow) = self.read_register(rd).overflowing_mul(self.read_register(rs));
                 self.set_register(rd, result);
                 self.set_nz(result);
+                self.cond_reg.c = overflow;
             }
             Instruction::MovImm { rd, offset } => {
                 self.set_register(rd, offset as u32);
@@ -372,7 +387,7 @@ impl Gamebuino {
                 self.increment_pc();
             }
             Instruction::Blx { rm } => {
-                self.set_register(LR_INDEX as u8, (self.read_register(PC_INDEX as u8) - 2) | 1);
+                self.set_register(LR_INDEX, (self.read_register(PC_INDEX as u8) - 2) | 1);
                 self.set_register(PC_INDEX as u8, self.read_register(rm) & !1);
                 self.increment_pc();
             }
@@ -401,9 +416,12 @@ impl Gamebuino {
                 }
                 self.set_register(rd, result as u32);
             }
-            Instruction::Ldrh { rb, ro, rd } => {
+            Instruction::LdrhReg { rb, ro, rd } => {
                 let result = self.fetch_half_word(self.read_register(rb) + self.read_register(ro));
                 self.set_register(rd, result as u32);
+            }
+            Instruction::LdrhImm { rb, offset, rd } => {
+                self.set_register(rd, 0xffff & (self.fetch_half_word(self.read_register(rb) + offset) as u32));
             }
             Instruction::Ldsh { rb, ro, rd } => {
                 let mut result = self.fetch_half_word(self.read_register(rb) + self.read_register(ro));
@@ -426,9 +444,34 @@ impl Gamebuino {
             Instruction::StrbImm { rb, offset, rd } => {
                 self.write_byte(self.read_register(rb) + offset, self.read_register(rd))
             }
-            Instruction::Strh { rb, ro, rd } => {
+            Instruction::StrhReg { rb, ro, rd } => {
                 let address = self.read_register(rb) + self.read_register(ro);
                 self.write_half_word(address, self.read_register(rd));
+            }
+            Instruction::StrhImm { rb, offset, rd } => {
+                self.write_half_word(self.read_register(rb) + offset, self.read_register(rd))
+            }
+            Instruction::Sxth { rd, rm } => {
+                let mut result = self.read_register(rm) & 0xffff;
+                if (result & 0x8000) != 0 {
+                    result = (!0xffff) | result;
+                }
+                self.set_register(rd, result);
+            }
+            Instruction::Sxtb { rd, rm } => {
+                let mut result = self.read_register(rm) & 0xff;
+                if (result & 0x80) != 0 {
+                    result = (!0xff) | result;
+                }
+                self.set_register(rd, result);
+            }
+            Instruction::Uxth { rd, rm } => {
+                let result = self.read_register(rm) & 0xffff;
+                self.set_register(rd, result);
+            }
+            Instruction::Uxtb { rd, rm } => {
+                let result = self.read_register(rm) & 0xff;
+                self.set_register(rd, result);
             }
         }
     }
@@ -562,9 +605,9 @@ impl Gamebuino {
             let rb = ((instruction & 0b0000000000111000) >> 3) as u8;
             let rd = (instruction & 0b0000000000000111) as u8;
             match hs {
-                0b00 => Instruction::Strh { rb, ro, rd },
+                0b00 => Instruction::StrhReg { rb, ro, rd },
                 0b01 => Instruction::Ldsb { rb, ro, rd },
-                0b10 => Instruction::Ldrh { rb, ro, rd },
+                0b10 => Instruction::LdrhReg { rb, ro, rd },
                 0b11 => Instruction::Ldsh { rb, ro, rd },
                 _ => panic!("Unexpected hs {}", hs),
             }
@@ -579,6 +622,49 @@ impl Gamebuino {
                 0b10 => Instruction::StrbImm { rb, offset: offset, rd },
                 0b11 => Instruction::LdrbImm { rb, offset: offset, rd },
                 _ => panic!("Unexpected bl {}", bl),
+            }
+        } else if (instruction & 0b1111000000000000) == 0b1000000000000000 {
+            let l = (instruction & 0b0000100000000000) != 0;
+            let offset = ((instruction & 0b0000011111000000) >> 6) as u32;
+            let rb = ((instruction & 0b0000000000111000) >> 3) as u8;
+            let rd = (instruction & 0b0000000000000111) as u8;
+            if l {
+                Instruction::LdrhImm { rb, offset: offset << 1, rd }
+            } else {
+                Instruction::StrhImm { rb, offset: offset << 1, rd }
+            }
+        } else if (instruction & 0b1111000000000000) == 0b1001000000000000 {
+            let l =  (instruction & 0b0000100000000000) != 0;
+            let rd = ((instruction & 0b0000011100000000) >> 8) as u8;
+            let offset = ((instruction & 0b0000000011111111) << 2) as u32;
+            if l {
+                Instruction::LdrImm { rb: SP_INDEX, offset, rd }
+            } else {
+                Instruction::StrImm { rb: SP_INDEX, offset, rd }
+            }
+        } else if (instruction & 0b1111000000000000) == 0b1010000000000000 {
+            let sp =  (instruction & 0b0000100000000000) != 0;
+            let rd = ((instruction & 0b0000011100000000) >> 8) as u8;
+            let offset = ((instruction & 0b0000000011111111) << 2) as u32;
+            if sp {
+                Instruction::AddSp { offset, rd }
+            } else {
+                Instruction::AddPc { offset, rd }
+            }
+        } else if (instruction & 0b1111111100000000) == 0b1011000000000000 {
+            let negative = (instruction & 0b0000000010000000) != 0;
+            let offset = if negative { -1 } else { 1 } * ((instruction & 0b0000000001111111) << 2) as i32;
+            Instruction::AddSp { offset: offset as u32, rd: SP_INDEX }
+        } else if (instruction & 0b1111111100000000) == 0b1011001000000000 {
+            let opcode = (instruction & 0b0000000011000000) >> 6;
+            let rm = ((instruction & 0b0000000000111000) >> 3) as u8;
+            let rd = (instruction & 0b0000000000000111) as u8;
+            match opcode {
+                0b00 => Instruction::Sxth { rd, rm },
+                0b01 => Instruction::Sxtb { rd, rm },
+                0b10 => Instruction::Uxth { rd, rm },
+                0b11 => Instruction::Uxtb { rd, rm },
+                _ => panic!("Unexpected opcode {}", opcode),
             }
         } else {
             panic!("Unimplemented instruction!");
