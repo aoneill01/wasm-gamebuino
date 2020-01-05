@@ -9,7 +9,8 @@ gamebuino.dummy();
 
 
 const start = window.performance.now();
-gamebuino.run(48000000);
+gamebuino.run(75000000);
+// gamebuino.run(48000000);
 const end = window.performance.now();
 console.log(end - start);
 gamebuino.dummy();

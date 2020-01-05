@@ -47,7 +47,17 @@ enum Instruction {
     Blx { rm: u8 },
     LdrPc { rd: u8, immediate_value: u32 },
     LdrReg { rb: u8, ro: u8, rd: u8 },
-    Ldrb { rb: u8, ro: u8, rd: u8 },
+    LdrbReg { rb: u8, ro: u8, rd: u8 },
+    LdrImm { rb: u8, offset: u32, rd: u8 },
+    LdrbImm { rb: u8, offset: u32, rd: u8 },
+    Ldsb { rb: u8, ro: u8, rd: u8 },
+    Ldrh { rb: u8, ro: u8, rd: u8 },
+    Ldsh { rb: u8, ro: u8, rd: u8 },
+    StrReg { rb: u8, ro: u8, rd: u8 },
+    StrbReg { rb: u8, ro: u8, rd: u8 },
+    StrImm { rb: u8, offset: u32, rd: u8 },
+    StrbImm { rb: u8, offset: u32, rd: u8 },
+    Strh { rb: u8, ro: u8, rd: u8 }
 }
 
 struct CondRegister {
@@ -134,6 +144,19 @@ impl Gamebuino {
         }
     }
 
+    fn fetch_half_word(&self, address: u32) -> u16 {
+        let addr = address as usize;
+        if addr < 0x20000000 {
+            let addr = addr % 0x40000;
+            self.flash[addr] as u16 | (self.flash[addr + 1] as u16) << 8
+        } else if addr < 0x40000000 {
+            let addr = (addr - 0x20000000) % 0x8000;
+            self.sram[addr] as u16 | (self.sram[addr + 1] as u16) << 8
+        } else {
+            0
+        }
+    }
+
     fn fetch_byte(&self, address: u32) -> u8 {
         let addr = address as usize;
         if addr < 0x20000000 {
@@ -144,6 +167,40 @@ impl Gamebuino {
             self.sram[addr]
         } else {
             0
+        }
+    }
+
+    fn write_word(&mut self, address: u32, value: u32) {
+        let addr = address as usize;
+        if addr < 0x20000000 {
+            // do nothing; not supporting writing to flash
+        } else if addr < 0x40000000 {
+            let addr = (addr - 0x20000000) % 0x8000;
+            self.sram[addr] = (value & 0xff) as u8;
+            self.sram[addr + 1] = ((value >> 8) & 0xff) as u8;
+            self.sram[addr + 2] = ((value >> 16) & 0xff) as u8;
+            self.sram[addr + 3] = ((value >> 24) & 0xff) as u8;
+        }
+    }
+
+    fn write_half_word(&mut self, address: u32, value: u32) {
+        let addr = address as usize;
+        if addr < 0x20000000 {
+            // do nothing; not supporting writing to flash
+        } else if addr < 0x40000000 {
+            let addr = (addr - 0x20000000) % 0x8000;
+            self.sram[addr] = (value & 0xff) as u8;
+            self.sram[addr + 1] = ((value >> 8) & 0xff) as u8;
+        }
+    }
+
+    fn write_byte(&mut self, address: u32, value: u32) {
+        let addr = address as usize;
+        if addr < 0x20000000 {
+            // do nothing; not supporting writing to flash
+        } else if addr < 0x40000000 {
+            let addr = (addr - 0x20000000) % 0x8000;
+            self.sram[addr] = value as u8;
         }
     }
 
@@ -327,9 +384,51 @@ impl Gamebuino {
                 let result = self.fetch_word(self.read_register(rb) + self.read_register(ro));
                 self.set_register(rd, result);
             }
-            Instruction::Ldrb { rb, ro, rd } => {
+            Instruction::LdrbReg { rb, ro, rd } => {
                 let result = self.fetch_byte(self.read_register(rb) + self.read_register(ro));
                 self.set_register(rd, result as u32);
+            }
+            Instruction::LdrImm { rb, offset, rd } => {
+                self.set_register(rd, self.fetch_word(self.read_register(rb) + offset));
+            }
+            Instruction::LdrbImm { rb, offset, rd } => {
+                self.set_register(rd, self.fetch_byte(self.read_register(rb) + offset) as u32);
+            }
+            Instruction::Ldsb { rb, ro, rd } => {
+                let mut result = self.fetch_byte(self.read_register(rb) + self.read_register(ro));
+                if result & 0x80 != 0 {
+                    result |= !0xff;
+                }
+                self.set_register(rd, result as u32);
+            }
+            Instruction::Ldrh { rb, ro, rd } => {
+                let result = self.fetch_half_word(self.read_register(rb) + self.read_register(ro));
+                self.set_register(rd, result as u32);
+            }
+            Instruction::Ldsh { rb, ro, rd } => {
+                let mut result = self.fetch_half_word(self.read_register(rb) + self.read_register(ro));
+                if result & 0x8000 != 0 {
+                    result |= !0xffff;
+                }
+                self.set_register(rd, result as u32);
+            }
+            Instruction::StrReg { rb, ro, rd } => {
+                let address = self.read_register(rb) + self.read_register(ro);
+                self.write_word(address, self.read_register(rd));
+            }
+            Instruction::StrbReg { rb, ro, rd } => {
+                let address = self.read_register(rb) + self.read_register(ro);
+                self.write_byte(address, self.read_register(rd));
+            }
+            Instruction::StrImm { rb, offset, rd } => {
+                self.write_word(self.read_register(rb) + offset, self.read_register(rd))
+            }
+            Instruction::StrbImm { rb, offset, rd } => {
+                self.write_byte(self.read_register(rb) + offset, self.read_register(rd))
+            }
+            Instruction::Strh { rb, ro, rd } => {
+                let address = self.read_register(rb) + self.read_register(ro);
+                self.write_half_word(address, self.read_register(rd));
             }
         }
     }
@@ -451,9 +550,35 @@ impl Gamebuino {
             let rb = ((instruction & 0b0000000000111000) >> 3) as u8;
             let rd = (instruction & 0b0000000000000111) as u8;
             match lb {
+                0b00 => Instruction::StrReg { rb, ro, rd },
+                0b01 => Instruction::StrbReg { rb, ro, rd },
                 0b10 => Instruction::LdrReg { rb, ro, rd },
-                0b11 => Instruction::Ldrb { rb, ro, rd },
+                0b11 => Instruction::LdrbReg { rb, ro, rd },
                 _ => panic!("Unexpected lb {}", lb),
+            }
+        } else if (instruction & 0b1111001000000000) == 0b0101001000000000 {
+            let hs = (instruction & 0b0000110000000000) >> 10;
+            let ro = ((instruction & 0b0000000111000000) >> 6) as u8;
+            let rb = ((instruction & 0b0000000000111000) >> 3) as u8;
+            let rd = (instruction & 0b0000000000000111) as u8;
+            match hs {
+                0b00 => Instruction::Strh { rb, ro, rd },
+                0b01 => Instruction::Ldsb { rb, ro, rd },
+                0b10 => Instruction::Ldrh { rb, ro, rd },
+                0b11 => Instruction::Ldsh { rb, ro, rd },
+                _ => panic!("Unexpected hs {}", hs),
+            }
+        } else if (instruction & 0b1110000000000000) == 0b0110000000000000 {
+            let bl = (instruction & 0b0001100000000000) >> 11;
+            let offset = ((instruction & 0b0000011111000000) >> 6) as u32;
+            let rb = ((instruction & 0b0000000000111000) >> 3) as u8;
+            let rd = (instruction & 0b0000000000000111) as u8;
+            match bl {
+                0b00 => Instruction::StrImm { rb, offset: offset << 2, rd },
+                0b01 => Instruction::LdrImm { rb, offset: offset << 2, rd },
+                0b10 => Instruction::StrbImm { rb, offset: offset, rd },
+                0b11 => Instruction::LdrbImm { rb, offset: offset, rd },
+                _ => panic!("Unexpected bl {}", bl),
             }
         } else {
             panic!("Unimplemented instruction!");
