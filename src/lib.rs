@@ -107,9 +107,12 @@ pub struct Gamebuino {
     flash: [u8; 0x40000],
     sram: [u8; 0x8000],
     tick_count: u64,
+    program_offset: u32,
+    systic_vector: u32,
+    dmac_vector: u32,
 }
 
-const PC_INDEX: usize = 15;
+const PC_INDEX: u8 = 15;
 const LR_INDEX: u8 = 14;
 const SP_INDEX: u8 = 13;
 
@@ -129,27 +132,57 @@ impl Gamebuino {
             flash: [0xff; 0x40000],
             sram: [0xff; 0x8000],
             tick_count: 0,
+            program_offset: 0,
+            systic_vector: 0,
+            dmac_vector: 0,
         };
         result.load_sample_instructions();
         result
     }
 
-    pub fn dummy(&self) {
-        log!(
-            "It works! {:?}\nreg: {:?}",
-            &self.instructions,
-            &self.registers
-        );
+    pub fn load_program(&mut self, contents: &[u8], offset: u32) {
+        self.program_offset = offset;
+        self.instructions.clear();
+
+        for (i, val) in contents.iter().enumerate() {
+            self.flash[i + offset as usize] = *val;
+        }
+
+        for i in 0..(contents.len() / 2) as u32 {
+            let instruction = self.fetch_half_word(offset + i * 2);
+            let following_instruction = self.fetch_half_word(offset + (i + 1) * 2);
+            self.instructions.push(Gamebuino::parse_instruction(
+                instruction,
+                following_instruction,
+            ));
+        }
+
+        self.reset();
+    }
+
+    fn reset(&mut self) {
+        self.set_register(SP_INDEX, self.fetch_word(0x0000 + self.program_offset));
+        self.set_register(LR_INDEX, 0xffffffff);
+        self.set_register(PC_INDEX, self.fetch_word(0x0004 + self.program_offset) & !1);
+        self.systic_vector = self.fetch_word(0x003C + self.program_offset) & !1;
+        self.dmac_vector = self.fetch_word(0x0058 + self.program_offset) & !1;
     }
 
     pub fn step(&mut self) {
-        let instruction = *self.instructions.get(0).unwrap();
-        self.execute_instruction(instruction);
-        self.increment_pc();
-    }
+        let addr = self.read_register(PC_INDEX) - 2;
 
-    pub fn debug_instruction(&mut self, instruction: u16) {
-        self.execute_instruction(Gamebuino::parse_instruction(instruction, 0xffff));
+        let instruction = *self
+            .instructions
+            .get(((addr - self.program_offset) >> 1) as usize)
+            .unwrap();
+        // log!(
+        //     "addr: {}, instr: {:016b}, {:?}",
+        //     addr,
+        //     self.fetch_half_word(addr),
+        //     instruction
+        // );
+        self.increment_pc();
+        self.execute_instruction(instruction);
     }
 
     pub fn run(&mut self, steps: usize) {
@@ -160,7 +193,7 @@ impl Gamebuino {
 
     fn increment_pc(&mut self) {
         self.tick_count += 1;
-        self.registers[PC_INDEX] += 1;
+        self.registers[PC_INDEX as usize] += 2;
     }
 
     fn push_stack(&mut self, value: u32) {
@@ -336,7 +369,7 @@ impl Gamebuino {
                 self.set_register(rd, self.read_register(SP_INDEX) + offset);
             }
             Instruction::AddPc { rd, offset } => {
-                self.set_register(rd, (self.read_register(PC_INDEX as u8) & !0b11) + offset);
+                self.set_register(rd, (self.read_register(PC_INDEX) & !0b11) + offset);
             }
             Instruction::Adc { rs, rd } => {
                 let result = self.add_and_set_condition(
@@ -382,7 +415,7 @@ impl Gamebuino {
             }
             Instruction::MovReg { rs, rd } => {
                 self.set_register(rd, self.read_register(rs));
-                if rd as usize == PC_INDEX {
+                if rd == PC_INDEX {
                     self.increment_pc();
                 }
             }
@@ -425,12 +458,12 @@ impl Gamebuino {
                 self.set_nz(result);
             }
             Instruction::Bx { rs } => {
-                self.set_register(PC_INDEX as u8, self.read_register(rs) & !1);
+                self.set_register(PC_INDEX, self.read_register(rs) & !1);
                 self.increment_pc();
             }
             Instruction::Blx { rm } => {
-                self.set_register(LR_INDEX, (self.read_register(PC_INDEX as u8) - 2) | 1);
-                self.set_register(PC_INDEX as u8, self.read_register(rm) & !1);
+                self.set_register(LR_INDEX, (self.read_register(PC_INDEX) - 2) | 1);
+                self.set_register(PC_INDEX, self.read_register(rm) & !1);
                 self.increment_pc();
             }
             Instruction::LdrPc {
@@ -438,7 +471,7 @@ impl Gamebuino {
                 immediate_value,
             } => {
                 let result =
-                    self.fetch_word((self.read_register(PC_INDEX as u8) & !0b11) + immediate_value);
+                    self.fetch_word((self.read_register(PC_INDEX) & !0b11) + immediate_value);
                 self.set_register(rd, result);
             }
             Instruction::LdrReg { rb, ro, rd } => {
@@ -573,102 +606,102 @@ impl Gamebuino {
                     }
                 }
                 if pc {
-                    self.pop_stack(PC_INDEX as u8);
-                    self.set_register(PC_INDEX as u8, self.read_register(PC_INDEX as u8) & !1);
+                    self.pop_stack(PC_INDEX);
+                    self.set_register(PC_INDEX, self.read_register(PC_INDEX) & !1);
                     self.increment_pc();
                 }
             }
             Instruction::Beq { offset } => {
                 if self.cond_reg.z {
-                    self.set_register(PC_INDEX as u8, self.read_register(PC_INDEX as u8) + offset);
+                    self.set_register(PC_INDEX, self.read_register(PC_INDEX) + offset);
                     self.increment_pc();
                 }
             }
             Instruction::Bne { offset } => {
                 if !self.cond_reg.z {
-                    self.set_register(PC_INDEX as u8, self.read_register(PC_INDEX as u8) + offset);
+                    self.set_register(PC_INDEX, self.read_register(PC_INDEX) + offset);
                     self.increment_pc();
                 }
             }
             Instruction::Bcs { offset } => {
                 if self.cond_reg.c {
-                    self.set_register(PC_INDEX as u8, self.read_register(PC_INDEX as u8) + offset);
+                    self.set_register(PC_INDEX, self.read_register(PC_INDEX) + offset);
                     self.increment_pc();
                 }
             }
             Instruction::Bcc { offset } => {
                 if !self.cond_reg.c {
-                    self.set_register(PC_INDEX as u8, self.read_register(PC_INDEX as u8) + offset);
+                    self.set_register(PC_INDEX, self.read_register(PC_INDEX) + offset);
                     self.increment_pc();
                 }
             }
             Instruction::Bmi { offset } => {
                 if self.cond_reg.n {
-                    self.set_register(PC_INDEX as u8, self.read_register(PC_INDEX as u8) + offset);
+                    self.set_register(PC_INDEX, self.read_register(PC_INDEX) + offset);
                     self.increment_pc();
                 }
             }
             Instruction::Bpl { offset } => {
                 if !self.cond_reg.n {
-                    self.set_register(PC_INDEX as u8, self.read_register(PC_INDEX as u8) + offset);
+                    self.set_register(PC_INDEX, self.read_register(PC_INDEX) + offset);
                     self.increment_pc();
                 }
             }
             Instruction::Bvs { offset } => {
                 if self.cond_reg.v {
-                    self.set_register(PC_INDEX as u8, self.read_register(PC_INDEX as u8) + offset);
+                    self.set_register(PC_INDEX, self.read_register(PC_INDEX) + offset);
                     self.increment_pc();
                 }
             }
             Instruction::Bcv { offset } => {
                 if !self.cond_reg.v {
-                    self.set_register(PC_INDEX as u8, self.read_register(PC_INDEX as u8) + offset);
+                    self.set_register(PC_INDEX, self.read_register(PC_INDEX) + offset);
                     self.increment_pc();
                 }
             }
             Instruction::Bhi { offset } => {
                 if self.cond_reg.c && !self.cond_reg.z {
-                    self.set_register(PC_INDEX as u8, self.read_register(PC_INDEX as u8) + offset);
+                    self.set_register(PC_INDEX, self.read_register(PC_INDEX) + offset);
                     self.increment_pc();
                 }
             }
             Instruction::Bls { offset } => {
                 if !self.cond_reg.c || self.cond_reg.z {
-                    self.set_register(PC_INDEX as u8, self.read_register(PC_INDEX as u8) + offset);
+                    self.set_register(PC_INDEX, self.read_register(PC_INDEX) + offset);
                     self.increment_pc();
                 }
             }
             Instruction::Bge { offset } => {
                 if self.cond_reg.n == self.cond_reg.v {
-                    self.set_register(PC_INDEX as u8, self.read_register(PC_INDEX as u8) + offset);
+                    self.set_register(PC_INDEX, self.read_register(PC_INDEX) + offset);
                     self.increment_pc();
                 }
             }
             Instruction::Blt { offset } => {
                 if self.cond_reg.n != self.cond_reg.v {
-                    self.set_register(PC_INDEX as u8, self.read_register(PC_INDEX as u8) + offset);
+                    self.set_register(PC_INDEX, self.read_register(PC_INDEX) + offset);
                     self.increment_pc();
                 }
             }
             Instruction::Bgt { offset } => {
                 if !self.cond_reg.z && (self.cond_reg.n == self.cond_reg.v) {
-                    self.set_register(PC_INDEX as u8, self.read_register(PC_INDEX as u8) + offset);
+                    self.set_register(PC_INDEX, self.read_register(PC_INDEX) + offset);
                     self.increment_pc();
                 }
             }
             Instruction::Ble { offset } => {
                 if self.cond_reg.z || (self.cond_reg.n != self.cond_reg.v) {
-                    self.set_register(PC_INDEX as u8, self.read_register(PC_INDEX as u8) + offset);
+                    self.set_register(PC_INDEX, self.read_register(PC_INDEX) + offset);
                     self.increment_pc();
                 }
             }
             Instruction::B { offset } => {
-                self.set_register(PC_INDEX as u8, self.read_register(PC_INDEX as u8) + offset);
+                self.set_register(PC_INDEX, self.read_register(PC_INDEX) + offset);
                 self.increment_pc();
             }
             Instruction::Bl { offset } => {
-                self.set_register(PC_INDEX as u8, self.read_register(PC_INDEX as u8) + offset);
-                self.set_register(LR_INDEX, self.read_register(PC_INDEX as u8) - 1);
+                self.set_register(PC_INDEX, self.read_register(PC_INDEX) + offset);
+                self.set_register(LR_INDEX, self.read_register(PC_INDEX) - 1);
                 self.increment_pc();
                 self.increment_pc();
             }
@@ -706,7 +739,7 @@ impl Gamebuino {
                     0 => Instruction::LslImm { rs, rd, offset },
                     1 => Instruction::LsrImm { rs, rd, offset },
                     2 => Instruction::AsrImm { rs, rd, offset },
-                    _ => panic!("Unexpected opcode {}", opcode),
+                    _ => Instruction::NotImplemented,
                 }
             } else {
                 let opcode = (instruction & 0b0000011000000000) >> 9;
@@ -732,7 +765,7 @@ impl Gamebuino {
                         rd,
                         offset: rn_offset,
                     },
-                    _ => panic!("Unexpected opcode {}", opcode),
+                    _ => Instruction::NotImplemented,
                 }
             }
         } else if instruction & 0b1110000000000000 == 0b0010000000000000 {
@@ -744,7 +777,7 @@ impl Gamebuino {
                 0b01 => Instruction::CmpImm { rd, offset },
                 0b10 => Instruction::AddImm { rs: rd, rd, offset },
                 0b11 => Instruction::SubImm { rs: rd, rd, offset },
-                _ => panic!("Unexpected opcode {}", opcode),
+                _ => Instruction::NotImplemented,
             }
         } else if (instruction & 0b1111110000000000) == 0b0100000000000000 {
             let opcode = (instruction & 0b0000001111000000) >> 6;
@@ -767,7 +800,7 @@ impl Gamebuino {
                 0b1101 => Instruction::Mul { rd, rs },
                 0b1110 => Instruction::Bic { rd, rs },
                 0b1111 => Instruction::Mvn { rd, rs },
-                _ => panic!("Unexpected opcode {}", opcode),
+                _ => Instruction::NotImplemented,
             }
         } else if (instruction & 0b1111110000000000) == 0b0100010000000000 {
             let op_h1_h2 = (instruction & 0b0000001111000000) >> 6;
@@ -821,7 +854,7 @@ impl Gamebuino {
                 0b1100 => Instruction::Bx { rs: rs_hs },
                 0b1101 => Instruction::Bx { rs: rs_hs + 8 },
                 0b1110 | 0b1111 => Instruction::Blx { rm },
-                _ => panic!("Unexpected opcode {}", op_h1_h2),
+                _ => Instruction::NotImplemented,
             }
         } else if (instruction & 0b1111100000000000) == 0b0100100000000000 {
             let rd = ((instruction & 0b0000011100000000) >> 8) as u8;
@@ -840,7 +873,7 @@ impl Gamebuino {
                 0b01 => Instruction::StrbReg { rb, ro, rd },
                 0b10 => Instruction::LdrReg { rb, ro, rd },
                 0b11 => Instruction::LdrbReg { rb, ro, rd },
-                _ => panic!("Unexpected lb {}", lb),
+                _ => Instruction::NotImplemented,
             }
         } else if (instruction & 0b1111001000000000) == 0b0101001000000000 {
             let hs = (instruction & 0b0000110000000000) >> 10;
@@ -852,7 +885,7 @@ impl Gamebuino {
                 0b01 => Instruction::Ldsb { rb, ro, rd },
                 0b10 => Instruction::LdrhReg { rb, ro, rd },
                 0b11 => Instruction::Ldsh { rb, ro, rd },
-                _ => panic!("Unexpected hs {}", hs),
+                _ => Instruction::NotImplemented,
             }
         } else if (instruction & 0b1110000000000000) == 0b0110000000000000 {
             let bl = (instruction & 0b0001100000000000) >> 11;
@@ -880,7 +913,7 @@ impl Gamebuino {
                     offset: offset,
                     rd,
                 },
-                _ => panic!("Unexpected bl {}", bl),
+                _ => Instruction::NotImplemented,
             }
         } else if (instruction & 0b1111000000000000) == 0b1000000000000000 {
             let l = (instruction & 0b0000100000000000) != 0;
@@ -943,7 +976,7 @@ impl Gamebuino {
                 0b01 => Instruction::Sxtb { rd, rm },
                 0b10 => Instruction::Uxth { rd, rm },
                 0b11 => Instruction::Uxtb { rd, rm },
-                _ => panic!("Unexpected opcode {}", opcode),
+                _ => Instruction::NotImplemented,
             }
         } else if (instruction & 0b1111111100000000) == 0b1011101000000000 {
             let opcode = (instruction & 0b0000000011000000) >> 6;
@@ -953,7 +986,7 @@ impl Gamebuino {
                 // TODO revsh
                 0b00 => Instruction::Rev { rd, rm },
                 0b01 => Instruction::Rev16 { rd, rm },
-                _ => panic!("Unexpected opcode {}", opcode),
+                _ => Instruction::NotImplemented,
             }
         } else if (instruction & 0b1111111111101000) == 0b1011011001100000 {
             // cps
@@ -999,7 +1032,7 @@ impl Gamebuino {
                 0b1011 => Instruction::Blt { offset },
                 0b1100 => Instruction::Bgt { offset },
                 0b1101 => Instruction::Ble { offset },
-                _ => panic!("Unexpected condition {}", condition),
+                _ => Instruction::NotImplemented,
             }
         } else if (instruction & 0b1111100000000000) == 0b1110000000000000 {
             let mut offset = (instruction & 0b0000000011111111) as u32;
