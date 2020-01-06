@@ -8,6 +8,7 @@ use wasm_bindgen::prelude::*;
 #[global_allocator]
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
+extern crate js_sys;
 extern crate web_sys;
 
 macro_rules! log {
@@ -92,6 +93,7 @@ enum Instruction {
     NotImplemented,
 }
 
+#[derive(Debug)]
 struct CondRegister {
     n: bool,
     z: bool,
@@ -164,6 +166,7 @@ impl Gamebuino {
         self.set_register(SP_INDEX, self.fetch_word(0x0000 + self.program_offset));
         self.set_register(LR_INDEX, 0xffffffff);
         self.set_register(PC_INDEX, self.fetch_word(0x0004 + self.program_offset) & !1);
+        self.increment_pc();
         self.systic_vector = self.fetch_word(0x003C + self.program_offset) & !1;
         self.dmac_vector = self.fetch_word(0x0058 + self.program_offset) & !1;
     }
@@ -176,17 +179,19 @@ impl Gamebuino {
             .get(((addr - self.program_offset) >> 1) as usize)
             .unwrap();
         // log!(
-        //     "addr: {}, instr: {:016b}, {:?}",
+        //     "addr: {:04x}, instr: {:016b}, {:?}",
         //     addr,
         //     self.fetch_half_word(addr),
         //     instruction
         // );
         self.increment_pc();
         self.execute_instruction(instruction);
+        // log!("flags: {:?}\nregs: {:?}", self.cond_reg, self.registers);
     }
 
     pub fn run(&mut self, steps: usize) {
-        for _ in 0..steps {
+        let goal = self.tick_count + steps as u64;
+        while self.tick_count < goal {
             self.step();
         }
     }
@@ -220,6 +225,11 @@ impl Gamebuino {
                 | (self.sram[addr + 1] as u32) << 8
                 | (self.sram[addr + 2] as u32) << 16
                 | (self.sram[addr + 3] as u32) << 24
+        } else if addr < 0x60000000 {
+            match addr {
+                // 0x4000080c => 0b11010010, // hack for PCLKSR
+                _ => 0,
+            }
         } else {
             0
         }
@@ -233,6 +243,12 @@ impl Gamebuino {
         } else if addr < 0x40000000 {
             let addr = (addr - 0x20000000) % 0x8000;
             self.sram[addr] as u16 | (self.sram[addr + 1] as u16) << 8
+        } else if addr < 0x60000000 {
+            match addr {
+                // hack for ADC RESULT
+                0x4200401A => (js_sys::Math::random() * (0xffff as f64)).floor() as u16,
+                _ => 0,
+            }
         } else {
             0
         }
@@ -246,6 +262,11 @@ impl Gamebuino {
         } else if addr < 0x40000000 {
             let addr = (addr - 0x20000000) % 0x8000;
             self.sram[addr]
+        } else if addr < 0x60000000 {
+            match addr {
+                0x42004018 => 1, // hack for ADC INTFLAG RESRDY
+                _ => 0,
+            }
         } else {
             0
         }

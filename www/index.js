@@ -6,10 +6,15 @@ fetch("https://raw.githubusercontent.com/Rodot/Games-META/master/binaries/Solita
   .then((response) => response.arrayBuffer())
   .then((buffer) => {
     gamebuino.load_program(new Uint8Array(buffer), 0x4000);
-    // for (let i = 0; i < 1000; i++) gamebuino.step();
+    for (let i = 0; i < 20; i++) gamebuino.step();
+    
+    document.getElementById("next").addEventListener("click", ev => {
+        ev.preventDefault();
+        gamebuino.step();
+    });
+
     const start = window.performance.now();
-    gamebuino.run(75000000);
-    // gamebuino.run(48000000);
+    gamebuino.run(48000000);
     const end = window.performance.now();
     console.log(end - start);
   });
