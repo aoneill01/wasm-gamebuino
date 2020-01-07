@@ -112,6 +112,9 @@ pub struct Gamebuino {
     program_offset: u32,
     systic_vector: u32,
     dmac_vector: u32,
+    dmac_registers: DmacRegisters,
+    porta_registers: PortRegisters,
+    portb_registers: PortRegisters,
 }
 
 const PC_INDEX: u8 = 15;
@@ -137,6 +140,9 @@ impl Gamebuino {
             program_offset: 0,
             systic_vector: 0,
             dmac_vector: 0,
+            dmac_registers: DmacRegisters::new(),
+            porta_registers: PortRegisters::new(),
+            portb_registers: PortRegisters::new(),
         };
         result.load_sample_instructions();
         result
@@ -226,8 +232,12 @@ impl Gamebuino {
                 | (self.sram[addr + 2] as u32) << 16
                 | (self.sram[addr + 3] as u32) << 24
         } else if addr < 0x60000000 {
+            let addr = addr as u32;
             match addr {
                 // 0x4000080c => 0b11010010, // hack for PCLKSR
+                DmacRegisters::DMAC_START_ADDR..=DmacRegisters::DMAC_END_ADDR => self
+                    .dmac_registers
+                    .handle_read_word(addr - DmacRegisters::DMAC_START_ADDR),
                 _ => 0,
             }
         } else {
@@ -282,6 +292,31 @@ impl Gamebuino {
             self.sram[addr + 1] = ((value >> 8) & 0xff) as u8;
             self.sram[addr + 2] = ((value >> 16) & 0xff) as u8;
             self.sram[addr + 3] = ((value >> 24) & 0xff) as u8;
+        } else if addr < 0x60000000 {
+            let addr = addr as u32;
+            match addr {
+                // 0x4000080c => 0b11010010, // hack for PCLKSR
+                DmacRegisters::DMAC_START_ADDR..=DmacRegisters::DMAC_END_ADDR => {
+                    let mut copied = self.dmac_registers;
+                    copied.handle_write_word(addr - DmacRegisters::DMAC_START_ADDR, value, self);
+                    self.dmac_registers = copied;
+                }
+                PortRegisters::PORTA_START_ADDR..=PortRegisters::PORTA_END_ADDR => {
+                    let mut copied = self.porta_registers;
+                    copied.handle_write_word(addr - PortRegisters::PORTA_START_ADDR, value, self);
+                    self.porta_registers = copied;
+                    // TODO port listeners
+                    self.porta_registers.diff = 0;
+                }
+                PortRegisters::PORTB_START_ADDR..=PortRegisters::PORTB_END_ADDR => {
+                    let mut copied = self.portb_registers;
+                    copied.handle_write_word(addr - PortRegisters::PORTB_START_ADDR, value, self);
+                    self.portb_registers = copied;
+                    // TODO port listeners
+                    self.portb_registers.diff = 0;
+                }
+                _ => {}
+            }
         }
     }
 
@@ -328,6 +363,10 @@ impl Gamebuino {
         self.cond_reg.v = ((n1 & 0x80000000) == (n2 & 0x80000000))
             && ((n1 & 0x80000000) != (result & 0x80000000));
         result
+    }
+
+    fn dmac_interrupt(&mut self) {
+        // TODO
     }
 
     fn execute_instruction(&mut self, instruction: Instruction) {
@@ -1087,5 +1126,188 @@ impl Gamebuino {
         else {
             Instruction::NotImplemented
         }
+    }
+}
+
+trait Peripheral {
+    fn handle_write_word(&mut self, offset: u32, value: u32, gamebuino: &mut Gamebuino);
+    fn handle_write_byte(&mut self, offset: u32, value: u8, gamebuino: &mut Gamebuino);
+    fn handle_read_word(&self, offset: u32) -> u32;
+    fn handle_read_byte(&self, offset: u32) -> u8;
+}
+
+#[derive(Clone, Copy)]
+struct DmacRegisters {
+    base_address: u32,
+    wrb_address: u32,
+    descriptor: u32,
+    selected_channel_id: u8,
+}
+
+impl DmacRegisters {
+    const BASEADDR_OFFSET: u32 = 0x34;
+    const WRBADDR_OFFSET: u32 = 0x38;
+    const CHID_OFFSET: u32 = 0x3f;
+    const CHCTRLA_OFFSET: u32 = 0x40;
+    const CHINTFLAG_OFFSET: u32 = 0x4e;
+    const DMAC_START_ADDR: u32 = 0x41004800;
+    const DMAC_END_ADDR: u32 = DmacRegisters::DMAC_START_ADDR + DmacRegisters::CHINTFLAG_OFFSET;
+
+    fn new() -> DmacRegisters {
+        DmacRegisters {
+            base_address: 0,
+            wrb_address: 0,
+            descriptor: 0,
+            selected_channel_id: 0,
+        }
+    }
+}
+
+impl Peripheral for DmacRegisters {
+    fn handle_write_word(&mut self, offset: u32, value: u32, _gamebuino: &mut Gamebuino) {
+        match offset {
+            DmacRegisters::BASEADDR_OFFSET => {
+                self.base_address = value;
+            }
+            DmacRegisters::WRBADDR_OFFSET => {
+                self.wrb_address = value;
+            }
+            _ => {}
+        }
+    }
+
+    fn handle_write_byte(&mut self, offset: u32, value: u8, gamebuino: &mut Gamebuino) {
+        match offset {
+            DmacRegisters::CHID_OFFSET => {
+                self.selected_channel_id = value;
+            }
+            DmacRegisters::CHCTRLA_OFFSET => {
+                if value == 0b10 {
+                    if self.descriptor == 0 {
+                        self.descriptor =
+                            self.base_address + self.selected_channel_id as u32 * 0x10;
+                    }
+
+                    let _btctrl = gamebuino.fetch_half_word(self.descriptor);
+                    let btcnt = gamebuino.fetch_half_word(self.descriptor + 0x02) as u32;
+                    let srcaddr = gamebuino.fetch_word(self.descriptor + 0x04);
+                    let dstaddr = gamebuino.fetch_word(self.descriptor + 0x08);
+                    let descaddr = gamebuino.fetch_word(self.descriptor + 0x0C);
+
+                    for i in 0..btcnt {
+                        gamebuino
+                            .write_byte(dstaddr, gamebuino.fetch_byte(srcaddr + i - btcnt) as u32);
+                    }
+
+                    self.descriptor = descaddr;
+
+                    gamebuino.dmac_interrupt();
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn handle_read_word(&self, _offset: u32) -> u32 {
+        0
+    }
+
+    fn handle_read_byte(&self, offset: u32) -> u8 {
+        match offset {
+            DmacRegisters::CHINTFLAG_OFFSET => 0b010, // TCMPL
+            _ => 0,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct PortRegisters {
+    out_value: u32,
+    in_value: u32,
+    dir_value: u32,
+    diff: u32,
+}
+
+impl PortRegisters {
+    const DIR_OFFSET: u32 = 0x00;
+    const DIRCLR_OFFSET: u32 = 0x04;
+    const DIRSET_OFFSET: u32 = 0x08;
+    const DIRTGL_OFFSET: u32 = 0x0C;
+    const OUT_OFFSET: u32 = 0x10;
+    const OUTCLR_OFFSET: u32 = 0x14;
+    const OUTSET_OFFSET: u32 = 0x18;
+    const OUTTGL_OFFSET: u32 = 0x1C;
+    const IN_OFFSET: u32 = 0x20;
+    const PORTA_START_ADDR: u32 = 0x41004400;
+    const PORTA_END_ADDR: u32 = PortRegisters::PORTA_START_ADDR + PortRegisters::IN_OFFSET;
+    const PORTB_START_ADDR: u32 = 0x41004480;
+    const PORTB_END_ADDR: u32 = PortRegisters::PORTB_START_ADDR + PortRegisters::IN_OFFSET;
+
+    fn new() -> PortRegisters {
+        PortRegisters {
+            out_value: 0,
+            in_value: 0,
+            dir_value: 0,
+            diff: 0,
+        }
+    }
+}
+
+impl Peripheral for PortRegisters {
+    fn handle_write_word(&mut self, offset: u32, value: u32, _gamebuino: &mut Gamebuino) {
+        match offset {
+            PortRegisters::OUT_OFFSET => {
+                self.diff = self.out_value ^ value;
+                self.out_value = value;
+            }
+            PortRegisters::OUTCLR_OFFSET => {
+                let new_value = self.out_value & !value;
+                self.diff = self.out_value ^ new_value;
+                self.out_value = new_value;
+            }
+            PortRegisters::OUTSET_OFFSET => {
+                let new_value = self.out_value | value;
+                self.diff = self.out_value ^ new_value;
+                self.out_value = new_value;
+            }
+            PortRegisters::OUTTGL_OFFSET => {
+                let new_value = self.out_value ^ value;
+                self.diff = value;
+                self.out_value = new_value;
+            }
+            PortRegisters::DIR_OFFSET => {
+                self.dir_value = value;
+            }
+            PortRegisters::DIRCLR_OFFSET => {
+                self.dir_value &= !value;
+            }
+            PortRegisters::DIRSET_OFFSET => {
+                self.dir_value |= value;
+            }
+            PortRegisters::DIRTGL_OFFSET => {
+                self.dir_value ^= value;
+            }
+            _ => {}
+        }
+    }
+    fn handle_write_byte(&mut self, _offset: u32, _value: u8, _gamebuino: &mut Gamebuino) {}
+
+    fn handle_read_word(&self, offset: u32) -> u32 {
+        match offset {
+            PortRegisters::OUT_OFFSET => self.out_value,
+            PortRegisters::OUTCLR_OFFSET => self.out_value,
+            PortRegisters::OUTSET_OFFSET => self.out_value,
+            PortRegisters::OUTTGL_OFFSET => self.out_value,
+            PortRegisters::IN_OFFSET => self.in_value,
+            PortRegisters::DIR_OFFSET => self.dir_value,
+            PortRegisters::DIRCLR_OFFSET => self.dir_value,
+            PortRegisters::DIRSET_OFFSET => self.dir_value,
+            PortRegisters::DIRTGL_OFFSET => self.dir_value,
+            _ => 0,
+        }
+    }
+
+    fn handle_read_byte(&self, _offset: u32) -> u8 {
+        0
     }
 }
