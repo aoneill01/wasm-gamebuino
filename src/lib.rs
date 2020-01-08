@@ -101,6 +101,22 @@ struct CondRegister {
     c: bool,
 }
 
+impl CondRegister {
+    fn to_word(&self) -> u32 {
+        (if self.c { 1 } else { 0 })
+            | (if self.n { 2 } else { 0 })
+            | (if self.v { 4 } else { 0 })
+            | (if self.z { 8 } else { 0 })
+    }
+
+    fn from_word(&mut self, val: u32) {
+        self.c = if val & 1 != 0 { true } else { false };
+        self.n = if val & 2 != 0 { true } else { false };
+        self.v = if val & 4 != 0 { true } else { false };
+        self.z = if val & 8 != 0 { true } else { false };
+    }
+}
+
 #[wasm_bindgen]
 pub struct Gamebuino {
     instructions: Vec<Instruction>,
@@ -111,7 +127,9 @@ pub struct Gamebuino {
     tick_count: u64,
     program_offset: u32,
     systic_vector: u32,
+    systick_trigger: isize,
     dmac_vector: u32,
+    dmac_interrupt: bool,
     dmac_registers: DmacRegisters,
     porta_registers: PortRegisters,
     portb_registers: PortRegisters,
@@ -120,6 +138,7 @@ pub struct Gamebuino {
 const PC_INDEX: u8 = 15;
 const LR_INDEX: u8 = 14;
 const SP_INDEX: u8 = 13;
+const SYSTICK_COUNTDOWN: isize = 20000;
 
 #[wasm_bindgen]
 impl Gamebuino {
@@ -139,13 +158,23 @@ impl Gamebuino {
             tick_count: 0,
             program_offset: 0,
             systic_vector: 0,
+            systick_trigger: SYSTICK_COUNTDOWN,
             dmac_vector: 0,
+            dmac_interrupt: false,
             dmac_registers: DmacRegisters::new(),
             porta_registers: PortRegisters::new(),
             portb_registers: PortRegisters::new(),
         };
         result.load_sample_instructions();
         result
+    }
+
+    pub fn get_register(&self, i: usize) -> u32 {
+        self.registers[i]
+    }
+
+    pub fn get_tick_count(&self) -> u32 {
+        self.tick_count as u32
     }
 
     pub fn load_program(&mut self, contents: &[u8], offset: u32) {
@@ -178,21 +207,64 @@ impl Gamebuino {
     }
 
     pub fn step(&mut self) {
-        let addr = self.read_register(PC_INDEX) - 2;
+        if self.dmac_interrupt {
+            log!("DMAC INT");
+            self.dmac_interrupt = false;
+            self.push_stack(self.cond_reg.to_word());
+            self.push_stack(self.read_register(PC_INDEX));
+            self.push_stack(self.read_register(LR_INDEX));
+            self.push_stack(self.read_register(12));
+            self.push_stack(self.read_register(3));
+            self.push_stack(self.read_register(2));
+            self.push_stack(self.read_register(1));
+            self.push_stack(self.read_register(0));
+            self.set_register(PC_INDEX, self.dmac_vector);
+            self.set_register(LR_INDEX, 0xfffffff9);
+            self.increment_pc();
+        } else if self.systick_trigger <= 0 {
+            self.systick_trigger = SYSTICK_COUNTDOWN;
+            self.push_stack(self.cond_reg.to_word());
+            self.push_stack(self.read_register(PC_INDEX));
+            self.push_stack(self.read_register(LR_INDEX));
+            self.push_stack(self.read_register(12));
+            self.push_stack(self.read_register(3));
+            self.push_stack(self.read_register(2));
+            self.push_stack(self.read_register(1));
+            self.push_stack(self.read_register(0));
+            self.set_register(PC_INDEX, self.systic_vector);
+            self.set_register(LR_INDEX, 0xfffffff9);
+            self.increment_pc();
+        }
+
+        let mut addr = self.read_register(PC_INDEX) - 2;
+
+        while addr == 0xfffffff8 {
+            self.pop_stack(0);
+            self.pop_stack(1);
+            self.pop_stack(2);
+            self.pop_stack(3);
+            self.pop_stack(12);
+            self.pop_stack(LR_INDEX);
+            self.pop_stack(PC_INDEX);
+            let cnvz = self.fetch_word(self.read_register(SP_INDEX));
+            self.cond_reg.from_word(cnvz);
+            self.set_register(SP_INDEX, self.read_register(SP_INDEX) + 4);
+            addr = self.read_register(PC_INDEX) - 2;
+        }
 
         let instruction = *self
             .instructions
             .get(((addr - self.program_offset) >> 1) as usize)
             .unwrap();
-        // log!(
-        //     "addr: {:04x}, instr: {:016b}, {:?}",
-        //     addr,
-        //     self.fetch_half_word(addr),
-        //     instruction
-        // );
+        //     log!(
+        //         "addr: {:04x}, instr: {:016b}, {:?}",
+        //         addr,
+        //         self.fetch_half_word(addr),
+        //         instruction
+        //     );
         self.increment_pc();
         self.execute_instruction(instruction);
-        // log!("flags: {:?}\nregs: {:?}", self.cond_reg, self.registers);
+        //     log!("flags: {:?}\nregs: {:?}", self.cond_reg, self.registers);
     }
 
     pub fn run(&mut self, steps: usize) {
@@ -204,6 +276,7 @@ impl Gamebuino {
 
     fn increment_pc(&mut self) {
         self.tick_count += 1;
+        self.systick_trigger -= 1;
         self.registers[PC_INDEX as usize] += 2;
     }
 
@@ -220,6 +293,9 @@ impl Gamebuino {
     fn fetch_word(&self, address: u32) -> u32 {
         let addr = address as usize;
         if addr < 0x20000000 {
+            if addr >= 0x40000 {
+                return 0;
+            }
             let addr = addr % 0x40000;
             self.flash[addr] as u32
                 | (self.flash[addr + 1] as u32) << 8
@@ -234,10 +310,16 @@ impl Gamebuino {
         } else if addr < 0x60000000 {
             let addr = addr as u32;
             match addr {
-                // 0x4000080c => 0b11010010, // hack for PCLKSR
+                0x4000080c => 0b11010010, // hack for PCLKSR
                 DmacRegisters::DMAC_START_ADDR..=DmacRegisters::DMAC_END_ADDR => self
                     .dmac_registers
                     .handle_read_word(addr - DmacRegisters::DMAC_START_ADDR),
+                PortRegisters::PORTA_START_ADDR..=PortRegisters::PORTA_END_ADDR => self
+                    .porta_registers
+                    .handle_read_word(addr - PortRegisters::PORTA_START_ADDR),
+                PortRegisters::PORTB_START_ADDR..=PortRegisters::PORTB_END_ADDR => self
+                    .portb_registers
+                    .handle_read_word(addr - PortRegisters::PORTB_START_ADDR),
                 _ => 0,
             }
         } else {
@@ -366,7 +448,7 @@ impl Gamebuino {
     }
 
     fn dmac_interrupt(&mut self) {
-        // TODO
+        self.dmac_interrupt = true;
     }
 
     fn execute_instruction(&mut self, instruction: Instruction) {
@@ -451,8 +533,8 @@ impl Gamebuino {
             }
             Instruction::Sbc { rs, rd } => {
                 let result = self.add_and_set_condition(
-                    self.read_register(rs),
-                    !self.read_register(rd),
+                    self.read_register(rd),
+                    !self.read_register(rs),
                     if self.cond_reg.c { 1 } else { 0 },
                 );
                 self.set_register(rd, result);
@@ -760,8 +842,8 @@ impl Gamebuino {
                 self.increment_pc();
             }
             Instruction::Bl { offset } => {
-                self.set_register(PC_INDEX, self.read_register(PC_INDEX) + offset);
-                self.set_register(LR_INDEX, self.read_register(PC_INDEX) - 1);
+                self.set_register(LR_INDEX, self.read_register(PC_INDEX) + 1);
+                self.set_register(PC_INDEX, self.read_register(PC_INDEX) + offset - 2);
                 self.increment_pc();
                 self.increment_pc();
             }
