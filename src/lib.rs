@@ -19,76 +19,291 @@ macro_rules! log {
 
 #[derive(Debug, Copy, Clone)]
 enum Instruction {
-    LslImm { rs: u8, rd: u8, offset: u8 },
-    LslReg { rs: u8, rd: u8 },
-    LsrImm { rs: u8, rd: u8, offset: u8 },
-    LsrReg { rs: u8, rd: u8 },
-    AsrImm { rs: u8, rd: u8, offset: u8 },
-    AsrReg { rs: u8, rd: u8 },
-    AddReg { rs: u8, rd: u8, rn: u8 },
-    AddImm { rs: u8, rd: u8, offset: u8 },
-    AddSp { rd: u8, offset: u32 },
-    AddPc { rd: u8, offset: u32 },
-    Adc { rs: u8, rd: u8 },
-    SubReg { rs: u8, rd: u8, rn: u8 },
-    SubImm { rs: u8, rd: u8, offset: u8 },
-    Sbc { rs: u8, rd: u8 },
-    Neg { rs: u8, rd: u8 },
-    Mul { rs: u8, rd: u8 },
-    MovImm { rd: u8, offset: u8 },
-    MovReg { rs: u8, rd: u8 },
-    Mvn { rs: u8, rd: u8 },
-    CmpImm { rd: u8, offset: u8 },
-    CmpReg { rs: u8, rd: u8 },
-    Cmn { rs: u8, rd: u8 },
-    Tst { rs: u8, rd: u8 },
-    And { rs: u8, rd: u8 },
-    Bic { rs: u8, rd: u8 },
-    Eor { rs: u8, rd: u8 },
-    Oor { rs: u8, rd: u8 },
-    Bx { rs: u8 },
-    Blx { rm: u8 },
-    LdrPc { rd: u8, immediate_value: u32 },
-    LdrReg { rb: u8, ro: u8, rd: u8 },
-    LdrbReg { rb: u8, ro: u8, rd: u8 },
-    LdrImm { rb: u8, offset: u32, rd: u8 },
-    LdrbImm { rb: u8, offset: u32, rd: u8 },
-    Ldsb { rb: u8, ro: u8, rd: u8 },
-    LdrhReg { rb: u8, ro: u8, rd: u8 },
-    LdrhImm { rb: u8, offset: u32, rd: u8 },
-    Ldsh { rb: u8, ro: u8, rd: u8 },
-    Ldmia { rb: u8, rlist: u8 },
-    StrReg { rb: u8, ro: u8, rd: u8 },
-    StrbReg { rb: u8, ro: u8, rd: u8 },
-    StrImm { rb: u8, offset: u32, rd: u8 },
-    StrbImm { rb: u8, offset: u32, rd: u8 },
-    StrhReg { rb: u8, ro: u8, rd: u8 },
-    StrhImm { rb: u8, offset: u32, rd: u8 },
-    Stmia { rb: u8, rlist: u8 },
-    Sxth { rd: u8, rm: u8 },
-    Sxtb { rd: u8, rm: u8 },
-    Uxth { rd: u8, rm: u8 },
-    Uxtb { rd: u8, rm: u8 },
-    Rev { rd: u8, rm: u8 },
-    Rev16 { rd: u8, rm: u8 },
-    Push { rlist: u8, lr: bool },
-    Pop { rlist: u8, pc: bool },
-    Beq { offset: u32 },
-    Bne { offset: u32 },
-    Bcs { offset: u32 },
-    Bcc { offset: u32 },
-    Bmi { offset: u32 },
-    Bpl { offset: u32 },
-    Bvs { offset: u32 },
-    Bcv { offset: u32 },
-    Bhi { offset: u32 },
-    Bls { offset: u32 },
-    Bge { offset: u32 },
-    Blt { offset: u32 },
-    Bgt { offset: u32 },
-    Ble { offset: u32 },
-    B { offset: u32 },
-    Bl { offset: u32 },
+    LslImm {
+        rs: u8,
+        rd: u8,
+        offset: u8,
+    },
+    LslReg {
+        rs: u8,
+        rd: u8,
+    },
+    LsrImm {
+        rs: u8,
+        rd: u8,
+        offset: u8,
+    },
+    LsrReg {
+        rs: u8,
+        rd: u8,
+    },
+    AsrImm {
+        rs: u8,
+        rd: u8,
+        offset: u8,
+    },
+    AsrReg {
+        rs: u8,
+        rd: u8,
+    },
+    AddReg {
+        rs: u8,
+        rd: u8,
+        rn: u8,
+    },
+    AddImm {
+        rs: u8,
+        rd: u8,
+        offset: u8,
+    },
+    AddSp {
+        rd: u8,
+        offset: u32,
+    },
+    AddPc {
+        rd: u8,
+        offset: u32,
+    },
+    Adc {
+        rs: u8,
+        rd: u8,
+    },
+    SubReg {
+        rs: u8,
+        rd: u8,
+        rn: u8,
+    },
+    SubImm {
+        rs: u8,
+        rd: u8,
+        offset: u8,
+    },
+    Sbc {
+        rs: u8,
+        rd: u8,
+    },
+    Neg {
+        rs: u8,
+        rd: u8,
+    },
+    Mul {
+        rs: u8,
+        rd: u8,
+    },
+    MovImm {
+        rd: u8,
+        offset: u8,
+    },
+    MovReg {
+        rs: u8,
+        rd: u8,
+    },
+    Mvn {
+        rs: u8,
+        rd: u8,
+    },
+    CmpImm {
+        rd: u8,
+        offset: u8,
+    },
+    CmpReg {
+        rs: u8,
+        rd: u8,
+    },
+    Cmn {
+        rs: u8,
+        rd: u8,
+    },
+    Tst {
+        rs: u8,
+        rd: u8,
+    },
+    And {
+        rs: u8,
+        rd: u8,
+    },
+    Bic {
+        rs: u8,
+        rd: u8,
+    },
+    Eor {
+        rs: u8,
+        rd: u8,
+    },
+    Oor {
+        rs: u8,
+        rd: u8,
+    },
+    Bx {
+        rs: u8,
+    },
+    Blx {
+        rm: u8,
+    },
+    LdrPc {
+        rd: u8,
+        immediate_value: u32,
+    },
+    LdrReg {
+        rb: u8,
+        ro: u8,
+        rd: u8,
+    },
+    LdrbReg {
+        rb: u8,
+        ro: u8,
+        rd: u8,
+    },
+    LdrImm {
+        rb: u8,
+        offset: u32,
+        rd: u8,
+    },
+    LdrbImm {
+        rb: u8,
+        offset: u32,
+        rd: u8,
+    },
+    Ldsb {
+        rb: u8,
+        ro: u8,
+        rd: u8,
+    },
+    LdrhReg {
+        rb: u8,
+        ro: u8,
+        rd: u8,
+    },
+    LdrhImm {
+        rb: u8,
+        offset: u32,
+        rd: u8,
+    },
+    Ldsh {
+        rb: u8,
+        ro: u8,
+        rd: u8,
+    },
+    Ldmia {
+        rb: u8,
+        rlist: u8,
+    },
+    StrReg {
+        rb: u8,
+        ro: u8,
+        rd: u8,
+    },
+    StrbReg {
+        rb: u8,
+        ro: u8,
+        rd: u8,
+    },
+    StrImm {
+        rb: u8,
+        offset: u32,
+        rd: u8,
+    },
+    StrbImm {
+        rb: u8,
+        offset: u32,
+        rd: u8,
+    },
+    StrhReg {
+        rb: u8,
+        ro: u8,
+        rd: u8,
+    },
+    StrhImm {
+        rb: u8,
+        offset: u32,
+        rd: u8,
+    },
+    Stmia {
+        rb: u8,
+        rlist: u8,
+    },
+    Sxth {
+        rd: u8,
+        rm: u8,
+    },
+    Sxtb {
+        rd: u8,
+        rm: u8,
+    },
+    Uxth {
+        rd: u8,
+        rm: u8,
+    },
+    Uxtb {
+        rd: u8,
+        rm: u8,
+    },
+    Rev {
+        rd: u8,
+        rm: u8,
+    },
+    Rev16 {
+        rd: u8,
+        rm: u8,
+    },
+    Push {
+        rlist: u8,
+        lr: bool,
+    },
+    Pop {
+        rlist: u8,
+        pc: bool,
+    },
+    Beq {
+        offset: u32,
+    },
+    Bne {
+        offset: u32,
+    },
+    Bcs {
+        offset: u32,
+    },
+    Bcc {
+        offset: u32,
+    },
+    Bmi {
+        offset: u32,
+    },
+    Bpl {
+        offset: u32,
+    },
+    Bvs {
+        offset: u32,
+    },
+    Bcv {
+        offset: u32,
+    },
+    Bhi {
+        offset: u32,
+    },
+    Bls {
+        offset: u32,
+    },
+    Bge {
+        offset: u32,
+    },
+    Blt {
+        offset: u32,
+    },
+    Bgt {
+        offset: u32,
+    },
+    Ble {
+        offset: u32,
+    },
+    B {
+        offset: u32,
+    },
+    Bl {
+        offset1: u32,
+        offset2: u32,
+        first: bool,
+    },
     Dmb,
     NotImplemented,
 }
@@ -133,6 +348,11 @@ pub struct Gamebuino {
     dmac_registers: DmacRegisters,
     porta_registers: PortRegisters,
     portb_registers: PortRegisters,
+    sercom4: SercomRegisters,
+    sercom5: SercomRegisters,
+    screen: St7735,
+    buttons: Buttons,
+    log: bool,
 }
 
 const PC_INDEX: u8 = 15;
@@ -164,9 +384,18 @@ impl Gamebuino {
             dmac_registers: DmacRegisters::new(),
             porta_registers: PortRegisters::new(),
             portb_registers: PortRegisters::new(),
+            sercom4: SercomRegisters::new(),
+            sercom5: SercomRegisters::new(),
+            screen: St7735::new(),
+            buttons: Buttons::new(),
+            log: false,
         };
         result.load_sample_instructions();
         result
+    }
+
+    pub fn enable_logging(&mut self) {
+        self.log = true;
     }
 
     pub fn get_register(&self, i: usize) -> u32 {
@@ -185,13 +414,31 @@ impl Gamebuino {
             self.flash[i + offset as usize] = *val;
         }
 
+        let mut skip_next = false;
         for i in 0..(contents.len() / 2) as u32 {
+            if skip_next {
+                skip_next = false;
+                continue;
+            }
+
             let instruction = self.fetch_half_word(offset + i * 2);
             let following_instruction = self.fetch_half_word(offset + (i + 1) * 2);
-            self.instructions.push(Gamebuino::parse_instruction(
-                instruction,
-                following_instruction,
-            ));
+            let parsed = Gamebuino::parse_instruction(instruction, following_instruction);
+            self.instructions.push(parsed);
+
+            if let Instruction::Bl {
+                offset1,
+                offset2,
+                first: _,
+            } = parsed
+            {
+                skip_next = true;
+                self.instructions.push(Instruction::Bl {
+                    offset1,
+                    offset2,
+                    first: false,
+                });
+            }
         }
 
         self.reset();
@@ -208,7 +455,7 @@ impl Gamebuino {
 
     pub fn step(&mut self) {
         if self.dmac_interrupt {
-            log!("DMAC INT");
+            // log!("DMAC INT");
             self.dmac_interrupt = false;
             self.push_stack(self.cond_reg.to_word());
             self.push_stack(self.read_register(PC_INDEX));
@@ -256,15 +503,19 @@ impl Gamebuino {
             .instructions
             .get(((addr - self.program_offset) >> 1) as usize)
             .unwrap();
-        //     log!(
-        //         "addr: {:04x}, instr: {:016b}, {:?}",
-        //         addr,
-        //         self.fetch_half_word(addr),
-        //         instruction
-        //     );
+        if self.log {
+            log!(
+                "addr: {:04x}, instr: {:016b}, {:?}",
+                addr,
+                self.fetch_half_word(addr),
+                instruction
+            );
+        }
         self.increment_pc();
         self.execute_instruction(instruction);
-        //     log!("flags: {:?}\nregs: {:?}", self.cond_reg, self.registers);
+        if self.log {
+            log!("flags: {:?}\nregs: {:?}", self.cond_reg, self.registers);
+        }
     }
 
     pub fn run(&mut self, steps: usize) {
@@ -272,6 +523,10 @@ impl Gamebuino {
         while self.tick_count < goal {
             self.step();
         }
+    }
+
+    pub fn screen_data(&self) -> *const u32 {
+        self.screen.screen_data()
     }
 
     fn increment_pc(&mut self) {
@@ -320,6 +575,12 @@ impl Gamebuino {
                 PortRegisters::PORTB_START_ADDR..=PortRegisters::PORTB_END_ADDR => self
                     .portb_registers
                     .handle_read_word(addr - PortRegisters::PORTB_START_ADDR),
+                SercomRegisters::SERCOM4_START_ADDR..=SercomRegisters::SERCOM4_END_ADDR => self
+                    .sercom4
+                    .handle_read_word(addr - SercomRegisters::SERCOM4_START_ADDR),
+                SercomRegisters::SERCOM5_START_ADDR..=SercomRegisters::SERCOM5_END_ADDR => self
+                    .sercom5
+                    .handle_read_word(addr - SercomRegisters::SERCOM5_START_ADDR),
                 _ => 0,
             }
         } else {
@@ -355,8 +616,18 @@ impl Gamebuino {
             let addr = (addr - 0x20000000) % 0x8000;
             self.sram[addr]
         } else if addr < 0x60000000 {
+            let addr = addr as u32;
             match addr {
                 0x42004018 => 1, // hack for ADC INTFLAG RESRDY
+                DmacRegisters::DMAC_START_ADDR..=DmacRegisters::DMAC_END_ADDR => self
+                    .dmac_registers
+                    .handle_read_byte(addr - DmacRegisters::DMAC_START_ADDR),
+                SercomRegisters::SERCOM4_START_ADDR..=SercomRegisters::SERCOM4_END_ADDR => self
+                    .sercom4
+                    .handle_read_byte(addr - SercomRegisters::SERCOM4_START_ADDR),
+                SercomRegisters::SERCOM5_START_ADDR..=SercomRegisters::SERCOM5_END_ADDR => self
+                    .sercom5
+                    .handle_read_byte(addr - SercomRegisters::SERCOM5_START_ADDR),
                 _ => 0,
             }
         } else {
@@ -377,7 +648,6 @@ impl Gamebuino {
         } else if addr < 0x60000000 {
             let addr = addr as u32;
             match addr {
-                // 0x4000080c => 0b11010010, // hack for PCLKSR
                 DmacRegisters::DMAC_START_ADDR..=DmacRegisters::DMAC_END_ADDR => {
                     let mut copied = self.dmac_registers;
                     copied.handle_write_word(addr - DmacRegisters::DMAC_START_ADDR, value, self);
@@ -396,6 +666,36 @@ impl Gamebuino {
                     self.portb_registers = copied;
                     // TODO port listeners
                     self.portb_registers.diff = 0;
+                }
+                SercomRegisters::SERCOM4_START_ADDR..=SercomRegisters::SERCOM4_END_ADDR => {
+                    let mut copied = self.sercom4;
+                    copied.handle_write_word(
+                        addr - SercomRegisters::SERCOM4_START_ADDR,
+                        value,
+                        self,
+                    );
+                    self.sercom4 = copied;
+                    if let Some(value) = self.sercom4.sent {
+                        self.screen.byte_received(
+                            value,
+                            &self.porta_registers,
+                            &self.portb_registers,
+                        );
+                        self.buttons
+                            .byte_received(value, &self.portb_registers, &mut self.sercom4);
+                    }
+                    self.sercom4.sent = None;
+                }
+                SercomRegisters::SERCOM5_START_ADDR..=SercomRegisters::SERCOM5_END_ADDR => {
+                    let mut copied = self.sercom5;
+                    copied.handle_write_word(
+                        addr - SercomRegisters::SERCOM5_START_ADDR,
+                        value,
+                        self,
+                    );
+                    self.sercom5 = copied;
+                    // TODO sercom listeners
+                    self.sercom5.sent = None;
                 }
                 _ => {}
             }
@@ -420,6 +720,50 @@ impl Gamebuino {
         } else if addr < 0x40000000 {
             let addr = (addr - 0x20000000) % 0x8000;
             self.sram[addr] = value as u8;
+        } else if addr < 0x60000000 {
+            let addr = addr as u32;
+            match addr {
+                DmacRegisters::DMAC_START_ADDR..=DmacRegisters::DMAC_END_ADDR => {
+                    let mut copied = self.dmac_registers;
+                    copied.handle_write_byte(
+                        addr - DmacRegisters::DMAC_START_ADDR,
+                        value as u8,
+                        self,
+                    );
+                    self.dmac_registers = copied;
+                }
+                SercomRegisters::SERCOM4_START_ADDR..=SercomRegisters::SERCOM4_END_ADDR => {
+                    let mut copied = self.sercom4;
+                    copied.handle_write_byte(
+                        addr - SercomRegisters::SERCOM4_START_ADDR,
+                        value as u8,
+                        self,
+                    );
+                    self.sercom4 = copied;
+                    if let Some(value) = self.sercom4.sent {
+                        self.screen.byte_received(
+                            value,
+                            &self.porta_registers,
+                            &self.portb_registers,
+                        );
+                        self.buttons
+                            .byte_received(value, &self.portb_registers, &mut self.sercom4);
+                    }
+                    self.sercom4.sent = None;
+                }
+                SercomRegisters::SERCOM5_START_ADDR..=SercomRegisters::SERCOM5_END_ADDR => {
+                    let mut copied = self.sercom5;
+                    copied.handle_write_byte(
+                        addr - SercomRegisters::SERCOM5_START_ADDR,
+                        value as u8,
+                        self,
+                    );
+                    self.sercom5 = copied;
+                    // TODO sercom listeners
+                    self.sercom5.sent = None;
+                }
+                _ => {}
+            }
         }
     }
 
@@ -841,11 +1185,19 @@ impl Gamebuino {
                 self.set_register(PC_INDEX, self.read_register(PC_INDEX) + offset);
                 self.increment_pc();
             }
-            Instruction::Bl { offset } => {
-                self.set_register(LR_INDEX, self.read_register(PC_INDEX) + 1);
-                self.set_register(PC_INDEX, self.read_register(PC_INDEX) + offset - 2);
-                self.increment_pc();
-                self.increment_pc();
+            Instruction::Bl {
+                offset1,
+                offset2,
+                first,
+            } => {
+                if first {
+                    self.set_register(LR_INDEX, self.read_register(PC_INDEX) + offset1);
+                } else {
+                    let next_instruction = self.read_register(PC_INDEX) - 2;
+                    self.set_register(PC_INDEX, self.read_register(LR_INDEX) + offset2);
+                    self.set_register(LR_INDEX, next_instruction | 1);
+                    self.increment_pc();
+                }
             }
             Instruction::Dmb => {
                 self.increment_pc();
@@ -1177,10 +1529,10 @@ impl Gamebuino {
                 _ => Instruction::NotImplemented,
             }
         } else if (instruction & 0b1111100000000000) == 0b1110000000000000 {
-            let mut offset = (instruction & 0b0000000011111111) as u32;
+            let mut offset = (instruction & 0b0000011111111111) as u32;
             // Handle negative
-            if offset & 0b10000000 != 0 {
-                offset |= !0b11111111;
+            if offset & 0b10000000000 != 0 {
+                offset |= !0b11111111111;
             }
             offset = offset << 1;
             Instruction::B { offset }
@@ -1194,7 +1546,9 @@ impl Gamebuino {
             offset1 = offset1 << 12;
             let offset2 = ((following_instruction & 0b0000011111111111) << 1) as u32;
             Instruction::Bl {
-                offset: offset1 + offset2,
+                offset1,
+                offset2,
+                first: true,
             }
         } else if (instruction & 0b1111111111100000) == 0b1111001111100000
             && (following_instruction & 0b1101000000000000) == 0b1000000000000000
@@ -1247,6 +1601,7 @@ impl DmacRegisters {
 
 impl Peripheral for DmacRegisters {
     fn handle_write_word(&mut self, offset: u32, value: u32, _gamebuino: &mut Gamebuino) {
+        // log!("dmac write word {:x}", offset);
         match offset {
             DmacRegisters::BASEADDR_OFFSET => {
                 self.base_address = value;
@@ -1290,8 +1645,11 @@ impl Peripheral for DmacRegisters {
         }
     }
 
-    fn handle_read_word(&self, _offset: u32) -> u32 {
-        0
+    fn handle_read_word(&self, offset: u32) -> u32 {
+        match offset {
+            DmacRegisters::CHINTFLAG_OFFSET => 0b010, // TCMPL
+            _ => 0,
+        }
     }
 
     fn handle_read_byte(&self, offset: u32) -> u8 {
@@ -1358,7 +1716,7 @@ impl Peripheral for PortRegisters {
                 self.out_value = new_value;
             }
             PortRegisters::DIR_OFFSET => {
-                self.dir_value = value;
+                self.dir_value ^= value;
             }
             PortRegisters::DIRCLR_OFFSET => {
                 self.dir_value &= !value;
@@ -1391,5 +1749,188 @@ impl Peripheral for PortRegisters {
 
     fn handle_read_byte(&self, _offset: u32) -> u8 {
         0
+    }
+}
+
+#[derive(Clone, Copy)]
+struct SercomRegisters {
+    data: u8,
+    sent: Option<u8>,
+}
+
+impl SercomRegisters {
+    const INTFLAG_OFFSET: u32 = 0x18;
+    const DATA_OFFSET: u32 = 0x28;
+    const SERCOM0_ADDR: u32 = 0x42000800;
+    const SERCOM4_START_ADDR: u32 = SercomRegisters::SERCOM0_ADDR + 4 * 0x400;
+    const SERCOM4_END_ADDR: u32 =
+        SercomRegisters::SERCOM4_START_ADDR + SercomRegisters::DATA_OFFSET;
+    const SERCOM5_START_ADDR: u32 = SercomRegisters::SERCOM0_ADDR + 5 * 0x400;
+    const SERCOM5_END_ADDR: u32 =
+        SercomRegisters::SERCOM5_START_ADDR + SercomRegisters::DATA_OFFSET;
+
+    fn new() -> SercomRegisters {
+        SercomRegisters {
+            data: 0x80,
+            sent: None,
+        }
+    }
+}
+
+impl Peripheral for SercomRegisters {
+    fn handle_write_word(&mut self, offset: u32, value: u32, _gamebuino: &mut Gamebuino) {
+        match offset {
+            SercomRegisters::DATA_OFFSET => {
+                self.data = 0x80;
+                self.sent = Some(value as u8);
+            }
+            _ => {}
+        }
+    }
+
+    fn handle_write_byte(&mut self, offset: u32, value: u8, _gamebuino: &mut Gamebuino) {
+        match offset {
+            SercomRegisters::DATA_OFFSET => {
+                self.data = 0x80;
+                self.sent = Some(value);
+            }
+            _ => {}
+        }
+    }
+
+    fn handle_read_word(&self, offset: u32) -> u32 {
+        match offset {
+            SercomRegisters::INTFLAG_OFFSET => 0b00000111 as u32, // RXC, TXC, DRE
+            SercomRegisters::DATA_OFFSET => self.data as u32,
+            _ => 0,
+        }
+    }
+
+    fn handle_read_byte(&self, offset: u32) -> u8 {
+        match offset {
+            SercomRegisters::INTFLAG_OFFSET => 0b00000111, // RXC, TXC, DRE
+            SercomRegisters::DATA_OFFSET => self.data,
+            _ => 0,
+        }
+    }
+}
+
+struct St7735 {
+    x_start: u8,
+    x_end: u8,
+    y_start: u8,
+    y_end: u8,
+    x: u8,
+    y: u8,
+    arg_index: u8,
+    last_command: u8,
+    tmp_data: u8,
+    data: Vec<u32>,
+}
+
+impl St7735 {
+    const CASET: u8 = 0x2a; // Column address set command
+    const RASET: u8 = 0x2b; // Row address set command
+    const RAMWR: u8 = 0x2c; // Memory write comman
+    const WIDTH: usize = 160; // Screen width in pixels
+    const HEIGHT: usize = 128; // Screen height in pixels
+
+    fn new() -> St7735 {
+        St7735 {
+            x_start: 0,
+            x_end: 0,
+            y_start: 0,
+            y_end: 0,
+            x: 0,
+            y: 0,
+            arg_index: 0,
+            last_command: 0,
+            tmp_data: 0,
+            data: vec![0xffaa9900; St7735::WIDTH * St7735::HEIGHT],
+        }
+    }
+
+    pub fn screen_data(&self) -> *const u32 {
+        self.data.as_ptr()
+    }
+
+    fn byte_received(&mut self, value: u8, porta: &PortRegisters, portb: &PortRegisters) {
+        if porta.out_value & (1 << 22) != 0 {
+            return;
+        }
+        if portb.out_value & 0b100000000000000000000000 != 0 {
+            match self.last_command {
+                St7735::RAMWR => {
+                    if self.arg_index % 2 == 0 {
+                        self.tmp_data = value;
+                    } else {
+                        let pixel_data = ((self.tmp_data as u32) << 8) | value as u32;
+                        let r = (0b1111100000000000 & pixel_data) >> 8;
+                        let g = (0b0000011111100000 & pixel_data) >> 3;
+                        let b = (0b0000000000011111 & pixel_data) << 3;
+                        let color = (255 << 24) |    // alpha
+                                    (b << 16) |    // blue
+                                    (g <<  8) |    // green
+                                    r; // red
+                        let base_index = self.y as usize * St7735::WIDTH + self.x as usize;
+
+                        self.data[base_index] = color;
+                        // log!("({}, {}) = {:x}", self.x, self.y, color);
+                        // this._data[baseIndex] = color;
+                        // this._data[baseIndex + 1] = color;
+                        // this._data[baseIndex + WIDTH * SCALE] = color;
+                        // this._data[baseIndex + 1 + WIDTH * SCALE] = color;
+
+                        self.x += 1;
+                        if self.x > self.x_end {
+                            self.x = self.x_start;
+                            self.y += 1;
+                            if self.y > self.y_end {
+                                self.y = self.y_end;
+                            }
+                        }
+                    }
+                }
+                St7735::CASET => {
+                    if self.arg_index == 1 {
+                        self.x_start = value;
+                        self.x = value;
+                    } else if self.arg_index == 3 {
+                        self.x_end = value;
+                    }
+                }
+                St7735::RASET => {
+                    if self.arg_index == 1 {
+                        self.y_start = value;
+                        self.y = value;
+                    } else if self.arg_index == 3 {
+                        self.y_end = value;
+                    }
+                }
+                _ => {}
+            }
+            self.arg_index += 1;
+        } else {
+            self.last_command = value;
+            self.arg_index = 0;
+        }
+    }
+}
+
+struct Buttons {
+    button_data: u8,
+}
+
+impl Buttons {
+    fn new() -> Buttons {
+        Buttons { button_data: 0xff }
+    }
+
+    fn byte_received(&mut self, _value: u8, portb: &PortRegisters, sercom4: &mut SercomRegisters) {
+        if (portb.out_value & (1 << 3)) != 0 {
+            return;
+        }
+
+        sercom4.data = self.button_data;
     }
 }
