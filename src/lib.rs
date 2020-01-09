@@ -518,7 +518,9 @@ impl Gamebuino {
         }
     }
 
-    pub fn run(&mut self, steps: usize) {
+    pub fn run(&mut self, steps: usize, button_data: u8) {
+        self.buttons.button_data = button_data;
+
         let goal = self.tick_count + steps as u64;
         while self.tick_count < goal {
             self.step();
