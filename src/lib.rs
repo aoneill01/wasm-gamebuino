@@ -553,7 +553,6 @@ impl Gamebuino {
             if addr >= 0x40000 {
                 return 0;
             }
-            let addr = addr % 0x40000;
             self.flash[addr] as u32
                 | (self.flash[addr + 1] as u32) << 8
                 | (self.flash[addr + 2] as u32) << 16
@@ -593,7 +592,9 @@ impl Gamebuino {
     fn fetch_half_word(&self, address: u32) -> u16 {
         let addr = address as usize;
         if addr < 0x20000000 {
-            let addr = addr % 0x40000;
+            if addr >= 0x40000 {
+                return 0;
+            }
             self.flash[addr] as u16 | (self.flash[addr + 1] as u16) << 8
         } else if addr < 0x40000000 {
             let addr = (addr - 0x20000000) % 0x8000;
@@ -612,7 +613,9 @@ impl Gamebuino {
     fn fetch_byte(&self, address: u32) -> u8 {
         let addr = address as usize;
         if addr < 0x20000000 {
-            let addr = addr % 0x40000;
+            if addr >= 0x40000 {
+                return 0;
+            }
             self.flash[addr]
         } else if addr < 0x40000000 {
             let addr = (addr - 0x20000000) % 0x8000;
@@ -977,11 +980,12 @@ impl Gamebuino {
                 self.set_register(rd, self.fetch_byte(self.read_register(rb) + offset) as u32);
             }
             Instruction::Ldsb { rb, ro, rd } => {
-                let mut result = self.fetch_byte(self.read_register(rb) + self.read_register(ro));
+                let mut result =
+                    self.fetch_byte(self.read_register(rb) + self.read_register(ro)) as u32;
                 if result & 0x80 != 0 {
                     result |= !0xff;
                 }
-                self.set_register(rd, result as u32);
+                self.set_register(rd, result);
             }
             Instruction::LdrhReg { rb, ro, rd } => {
                 let result = self.fetch_half_word(self.read_register(rb) + self.read_register(ro));
@@ -995,11 +999,11 @@ impl Gamebuino {
             }
             Instruction::Ldsh { rb, ro, rd } => {
                 let mut result =
-                    self.fetch_half_word(self.read_register(rb) + self.read_register(ro));
+                    self.fetch_half_word(self.read_register(rb) + self.read_register(ro)) as u32;
                 if result & 0x8000 != 0 {
                     result |= !0xffff;
                 }
-                self.set_register(rd, result as u32);
+                self.set_register(rd, result);
             }
             Instruction::Ldmia { rb, rlist } => {
                 let mut addr = self.read_register(rb);
@@ -1848,7 +1852,7 @@ impl St7735 {
             arg_index: 0,
             last_command: 0,
             tmp_data: 0,
-            data: vec![0xffaa9900; St7735::WIDTH * St7735::HEIGHT],
+            data: vec![0xff000000; St7735::WIDTH * St7735::HEIGHT],
         }
     }
 
