@@ -11,13 +11,21 @@ ctx.imageSmoothingEnabled = false;
 let imageData = ctx.getImageData(0, 0, 160, 128);
 
 let buttonData = 0b11111111;
+let lastTimestamp = 0;
 
 start();
 // diff();
 // runTo(8594726);
 
-function step() {
-  gamebuino.run(20000000/60, buttonData);
+function step(timestamp) {
+  const goalTicksPerSecond = 20000000;
+  const maxIterations = goalTicksPerSecond / 30;
+  let delta = timestamp - lastTimestamp;
+  lastTimestamp = timestamp;
+  let iterations = delta * goalTicksPerSecond / 1000;
+  if (iterations > maxIterations) iterations = maxIterations;
+
+  gamebuino.run(iterations, buttonData);
 
   let buf8 = new Uint8Array(memory.buffer, gamebuino.screen_data(), 160 * 128 * 4);
   imageData.data.set(buf8);
@@ -71,11 +79,6 @@ function start() {
       gamebuino.load_program(new Uint8Array(buffer), 0x4000);
   
       step();
-  
-      // const start = window.performance.now();
-      // gamebuino.run(48000000);
-      // const end = window.performance.now();
-      // console.log(end - start);
     });
 }
 
