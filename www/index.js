@@ -1,8 +1,6 @@
 import { Gamebuino } from "wasm-gamebuino";
 import { memory } from "wasm-gamebuino/wasm_gamebuino_bg";
 
-const gamebuino = Gamebuino.new();
-
 const canvas = document.getElementById("gbscreen");
 let ctx = canvas.getContext("2d");
 ctx.scale(2, 2);
@@ -10,12 +8,75 @@ ctx.imageSmoothingEnabled = false;
 
 let imageData = ctx.getImageData(0, 0, 160, 128);
 
+let gamebuino;
 let buttonData = 0b11111111;
 let lastTimestamp = 0;
+let requestId;
 
 start();
-// diff();
-// runTo(8594726);
+
+document.getElementById("file-upload").onchange = function() {
+  if (this.files.length == 1) {
+      var f = this.files[0];
+      var reader = new FileReader();
+      reader.onload = function (e) {
+          if (requestId) cancelAnimationFrame(requestId);
+          start(e.target.result);
+      };
+      reader.readAsArrayBuffer(f);
+      this.value = "";
+  }
+};
+
+const keymap = [
+  [83, 40], // down
+  [65, 81, 37], // left
+  [68, 39], // right
+  [87, 90, 38], // up
+  [74], // A
+  [75], // B
+  [85], // MENU
+  [73]  // HOME
+];
+
+document.addEventListener("keydown", event => {
+  for (var i = 0; i < keymap.length; i++) {
+    for (var code of keymap[i]) {
+      if (code == event.keyCode) {
+        event.preventDefault();
+        buttonData &= (~(1 << i));
+        return;
+      }
+    }
+  }
+});
+
+document.addEventListener('keyup', event => {
+  for (var i = 0; i < keymap.length; i++) {
+    for (var code of keymap[i]) {
+      if (code == event.keyCode) {
+        buttonData |= (1 << i);
+        return;
+      }
+    }
+  }
+});
+
+function start(program) {
+  gamebuino = Gamebuino.new();
+
+  if (!program) {
+  fetch("https://raw.githubusercontent.com/Rodot/Games-META/master/binaries/METAtris/METAtris.bin")
+    .then((response) => response.arrayBuffer())
+    .then((buffer) => {
+      gamebuino.load_program(new Uint8Array(buffer), 0x4000);
+      step();
+    });
+  } else {
+    gamebuino.load_program(new Uint8Array(program), 0x4000);
+    step();
+  }
+}
 
 function step(timestamp) {
   const goalTicksPerSecond = 20000000;
@@ -32,131 +93,5 @@ function step(timestamp) {
   ctx.putImageData(imageData, 0, 0);
   ctx.drawImage(canvas, 0, 0);
 
-  requestAnimationFrame(step);
+  requestId = requestAnimationFrame(step);
 }
-
-function start() {
-  const keymap = [
-    [83, 40], // down
-    [65, 81, 37], // left
-    [68, 39], // right
-    [87, 90, 38], // up
-    [74], // A
-    [75], // B
-    [85], // MENU
-    [73]  // HOME
-  ];
-  
-  document.addEventListener("keydown", event => {
-    for (var i = 0; i < keymap.length; i++) {
-      for (var code of keymap[i]) {
-        if (code == event.keyCode) {
-          event.preventDefault();
-          buttonData &= (~(1 << i));
-          return;
-        }
-      }
-    }
-  });
-  
-  document.addEventListener('keyup', event => {
-    for (var i = 0; i < keymap.length; i++) {
-      for (var code of keymap[i]) {
-        if (code == event.keyCode) {
-          buttonData |= (1 << i);
-          return;
-        }
-      }
-    }
-  });
-
-  // fetch("https://raw.githubusercontent.com/Rodot/Games-META/master/binaries/PongMETA/PongMETA.bin")
-  fetch("https://raw.githubusercontent.com/Rodot/Games-META/master/binaries/METAtris/METAtris.bin")
-  // fetch("https://raw.githubusercontent.com/Rodot/Games-META/master/binaries/CatsAndCoinsDemo/CatsAndCoinsDemo.bin")
-  // fetch("https://raw.githubusercontent.com/Rodot/Games-META/master/binaries/Solitaire/Solitaire.bin")
-    .then((response) => response.arrayBuffer())
-    .then((buffer) => {
-      gamebuino.load_program(new Uint8Array(buffer), 0x4000);
-  
-      step();
-    });
-}
-
-// function diff() {
-//   const gameUrl = "https://raw.githubusercontent.com/Rodot/Games-META/master/binaries/PongMETA/PongMETA.bin";
-  
-//   fetch(gameUrl)
-//     .then((response) => response.arrayBuffer())
-//     .then((buffer) => {
-//       gamebuino.load_program(new Uint8Array(buffer), 0x4000);
-//     });
-  
-//   const original = new metaEmulator.Emulator("original");
-//   original.autoStart = false;
-//   original.loadFromUrl(gameUrl);
-
-//   setTimeout(() => {
-//     let i = 0;
-//     work();
-//     function work() {
-//       console.log("work");
-//       let buf8 = new Uint8Array(memory.buffer, gamebuino.screen_data(), 160 * 128 * 4);
-//       imageData.data.set(buf8);
-//       ctx.putImageData(imageData, 0, 0);
-//       ctx.drawImage(canvas, 0, 0);
-
-//       original._screen.updateCanvas();
-
-//       while (doesStepMatch()) {
-//         i++;
-//         if (i === 150000000) {
-//           break;
-//         }
-//         if (i % 333333 === 0) {
-//           setTimeout(work, 1);
-//           return;
-//         }
-//       }
-//       console.log(i);
-//     }
-
-//     function doesStepMatch() {
-//       gamebuino.step();
-//       original._atsamd21.step();
-    
-//       if (i >= 7137867 && i < 8000000) return true;
-  
-//       for (let i = 0; i < 16; i++) {
-//         let a = gamebuino.get_register(i);
-//         let b = original._atsamd21.registers[i];
-//         if ((a >> 0) !== (b >> 0)) {
-//           console.log(a, b);
-//           debugger;
-//           return false;
-//         }
-//       }
-    
-//       return true;
-//     }
-//   }, 1000);
-// }
-
-// function runTo(count) {
-//   const gameUrl = "https://raw.githubusercontent.com/Rodot/Games-META/master/binaries/PongMETA/PongMETA.bin";
-  
-//   fetch(gameUrl)
-//     .then((response) => response.arrayBuffer())
-//     .then((buffer) => {
-//       gamebuino.load_program(new Uint8Array(buffer), 0x4000);
-
-//       for (let i = 0; i < count; i++) gamebuino.step();
-//       gamebuino.enable_logging();
-//       gamebuino.step();
-//       gamebuino.step();
-
-//       let buf8 = new Uint8Array(memory.buffer, gamebuino.screen_data(), 160 * 128 * 4);
-//       imageData.data.set(buf8);
-//       ctx.putImageData(imageData, 0, 0);
-//       ctx.drawImage(canvas, 0, 0);
-//     });
-// }
