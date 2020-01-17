@@ -59,7 +59,9 @@ impl St7735 {
                                     r; // red
                         let base_index = self.y as usize * St7735::WIDTH + self.x as usize;
 
-                        self.data[base_index] = color;
+                        if base_index < St7735::WIDTH * St7735::HEIGHT {
+                            self.data[base_index] = color;
+                        }
 
                         self.x += 1;
                         if self.x > self.x_end {
