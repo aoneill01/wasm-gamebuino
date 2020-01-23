@@ -3,11 +3,38 @@
 
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=808, user-scalable=no">
   <title>Gamebuino Emulator</title>
+  <style>
+    body {
+      margin: 10px;
+      padding: 0;
+      background-color: #4485cf;
+      color: #004385;
+      font-size: 20px;
+      font-family: 'Open Sans', sans-serif;
+    }
+
+    #console {
+      width: 788px;
+      height: 428px;
+      background-image: url(console.png);
+      position: relative;
+    }
+
+    #gbscreen {
+      position: absolute;
+      top: 80px;
+      left: 232px;
+    }
+  </style>
 </head>
 
 <body>
-  <canvas id="gbscreen" width="320" height="256"></canvas>
+  <div id="console">
+    <canvas id="gbscreen" width="320" height="256"></canvas>
+  </div>
+
   <table>
     <thead>
       <tr>
@@ -47,5 +74,6 @@
   <script src="https://unpkg.com/text-encoding@0.6.4/lib/encoding.js"></script>
   <script src="./bootstrap.js"></script>
 </body>
+
 
 </html>
