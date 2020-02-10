@@ -38,6 +38,12 @@ class GamebuinoEmulator extends HTMLElement {
 
         this.root.innerHTML = `
         <style>
+            :host {
+                display: inline-block;
+                width: 788px;
+                height: 428px;
+            }
+
             #console {
                 width: 788px;
                 height: 428px;
@@ -110,6 +116,22 @@ class GamebuinoEmulator extends HTMLElement {
         this.start();
     }
 
+    get src() {
+        return this.getAttribute("src");
+    }
+
+    set src(value) {
+        return this.setAttribute("src", value);
+    }
+
+    static get observedAttributes() {
+        return ["src"];
+    }
+
+    attributeChangedCallback(name, oldValue, newValue) {
+        this.load();
+    }
+
     load(program) {
         if (this.requestId) cancelAnimationFrame(this.requestId);
         this.start(program);
@@ -123,9 +145,8 @@ class GamebuinoEmulator extends HTMLElement {
         if (program) {
             arrayBufferPromise = Promise.resolve(program);
         } else {
-            arrayBufferPromise = fetch(
-                "https://raw.githubusercontent.com/Rodot/Games-META/master/binaries/METAtris/METAtris.bin"
-            ).then(response => response.arrayBuffer());
+            arrayBufferPromise = fetch(this.src)
+                .then(response => response.arrayBuffer());
         }
 
         arrayBufferPromise.then(buffer => {
