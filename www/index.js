@@ -39,23 +39,25 @@ const keymap = [
     [73] // HOME
 ];
 
-const dpadX = 119;
-const dpadY = 216;
+const dpadX = 109;
+const dpadY = 206;
 const dpadDist = 87;
 
-const aX = 649;
-const aY = 233;
+const aX = 639;
+const aY = 223;
 
-const bX = 726;
-const bY = 199;
+const bX = 716;
+const bY = 189;
 
-const menuX = 297;
-const menuY = 382;
+const menuX = 287;
+const menuY = 372;
 
-const homeX = 505;
-const homeY = 382;
+const homeX = 495;
+const homeY = 372;
 
 const btnDist = 40;
+
+const pointerPresses = {};
 
 document.addEventListener("keydown", event => {
     for (var i = 0; i < keymap.length; i++) {
@@ -82,49 +84,47 @@ document.addEventListener("keyup", event => {
 
 const controls = document.getElementById("console");
 
-controls.addEventListener("touchstart", handleTouches);
-controls.addEventListener("touchmove", handleTouches);
-controls.addEventListener("touchend", handleTouches);
-
-controls.addEventListener("mousedown", handleMouseDown);
-controls.addEventListener("mousemove", handleMouseMove);
-controls.addEventListener("mouseup", handleMouseUp);
+controls.addEventListener("pointerdown", handlePointerDown);
+controls.addEventListener("pointermove", handlePointerMove);
+document.addEventListener("pointerup", handlePointerUp);
+document.addEventListener("pointercancel", handlePointerUp);
 
 function squareDist(touch, x, y) {
     return (
-        (touch.pageX - x) * (touch.pageX - x) +
-        (touch.pageY - y) * (touch.pageY - y)
+        (touch.offsetX - x) * (touch.offsetX - x) +
+        (touch.offsetY - y) * (touch.offsetY - y)
     );
 }
 
-var mousePressed = false;
-function handleMouseDown(event) {
-    mousePressed = true;
-    handleMouseMove(event);
-}
-
-function handleMouseMove(event) {
-    if (mousePressed) buttonData = handleTouch(event);
-}
-
-function handleMouseUp() {
-    mousePressed = false;
-    buttonData = 0b11111111;
-}
-
-function handleTouches(event) {
+function handlePointerDown(event) {
     event.preventDefault();
+    pointerPresses[event.pointerId] = 0b11111111;
+    handlePointerMove(event);
+    updateButtonData();
+}
 
+function handlePointerMove(event) {
+    if (pointerPresses.hasOwnProperty(event.pointerId)) {
+        pointerPresses[event.pointerId] = handlePointer(event);
+    }
+    updateButtonData();
+}
+
+function handlePointerUp(event) {
+    delete pointerPresses[event.pointerId];
+    updateButtonData();
+}
+
+function updateButtonData() {
     buttonData = 0b11111111;
-
-    for (var touch of event.touches) {
-        buttonData &= handleTouch(touch);
+    for (let prop in pointerPresses) {
+        buttonData = buttonData & pointerPresses[prop];
     }
 }
 
-function handleTouch(touch) {
-    if (squareDist(touch, dpadX, dpadY) < dpadDist * dpadDist) {
-        var angle = Math.atan2(dpadY - touch.pageY, touch.pageX - dpadX);
+function handlePointer(event) {
+    if (squareDist(event, dpadX, dpadY) < dpadDist * dpadDist) {
+        var angle = Math.atan2(dpadY - event.offsetY, event.offsetX - dpadX);
 
         if (angle < (-7 * Math.PI) / 8) {
             return 0b11111101;
@@ -145,13 +145,13 @@ function handleTouch(touch) {
         } else {
             return 0b11111101;
         }
-    } else if (squareDist(touch, aX, aY) < btnDist * btnDist) {
+    } else if (squareDist(event, aX, aY) < btnDist * btnDist) {
         return 0b11101111;
-    } else if (squareDist(touch, bX, bY) < btnDist * btnDist) {
+    } else if (squareDist(event, bX, bY) < btnDist * btnDist) {
         return 0b11011111;
-    } else if (squareDist(touch, menuX, menuY) < btnDist * btnDist) {
+    } else if (squareDist(event, menuX, menuY) < btnDist * btnDist) {
         return 0b10111111;
-    } else if (squareDist(touch, homeX, homeY) < btnDist * btnDist) {
+    } else if (squareDist(event, homeX, homeY) < btnDist * btnDist) {
         return 0b01111111;
     }
 
@@ -161,19 +161,20 @@ function handleTouch(touch) {
 function start(program) {
     gamebuino = Gamebuino.new();
 
-    if (!program) {
-        fetch(
-            "https://raw.githubusercontent.com/Rodot/Games-META/master/binaries/METAtris/METAtris.bin"
-        )
-            .then(response => response.arrayBuffer())
-            .then(buffer => {
-                gamebuino.load_program(new Uint8Array(buffer), 0x4000);
-                step();
-            });
+    let arrayBufferPromise;
+
+    if (program) {
+        arrayBufferPromise = Promise.resolve(program);
     } else {
-        gamebuino.load_program(new Uint8Array(program), 0x4000);
-        step();
+        arrayBufferPromise = fetch(
+            "https://raw.githubusercontent.com/Rodot/Games-META/master/binaries/METAtris/METAtris.bin"
+        ).then(response => response.arrayBuffer());
     }
+
+    arrayBufferPromise.then(buffer => {
+        gamebuino.load_program(new Uint8Array(buffer), 0x4000);
+        step();
+    });
 }
 
 function step(timestamp) {
