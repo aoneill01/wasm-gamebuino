@@ -1,33 +1,6 @@
 import { Gamebuino } from "wasm-gamebuino";
 import { memory } from "wasm-gamebuino/wasm_gamebuino_bg";
 
-const canvas = document.getElementById("gbscreen");
-let ctx = canvas.getContext("2d");
-ctx.scale(2, 2);
-ctx.imageSmoothingEnabled = false;
-
-let imageData = ctx.getImageData(0, 0, 160, 128);
-
-let gamebuino;
-let buttonData = 0b11111111;
-let lastTimestamp = 0;
-let requestId;
-
-start();
-
-document.getElementById("file-upload").onchange = function() {
-    if (this.files.length == 1) {
-        var f = this.files[0];
-        var reader = new FileReader();
-        reader.onload = function(e) {
-            if (requestId) cancelAnimationFrame(requestId);
-            start(e.target.result);
-        };
-        reader.readAsArrayBuffer(f);
-        this.value = "";
-    }
-};
-
 const keymap = [
     [83, 40], // down
     [65, 81, 37], // left
@@ -57,144 +30,203 @@ const homeY = 372;
 
 const btnDist = 40;
 
-const pointerPresses = {};
+class GamebuinoEmulator extends HTMLElement {
+    constructor() {
+        super();
 
-document.addEventListener("keydown", event => {
-    for (var i = 0; i < keymap.length; i++) {
-        for (var code of keymap[i]) {
-            if (code == event.keyCode) {
-                event.preventDefault();
-                buttonData &= ~(1 << i);
-                return;
+        this.root = this.attachShadow({ mode: "open" });
+
+        this.root.innerHTML = `
+        <style>
+            #console {
+                width: 788px;
+                height: 428px;
+                background-image: url(console.png);
+                position: relative;
             }
-        }
-    }
-});
 
-document.addEventListener("keyup", event => {
-    for (var i = 0; i < keymap.length; i++) {
-        for (var code of keymap[i]) {
-            if (code == event.keyCode) {
-                buttonData |= 1 << i;
-                return;
+            #gbscreen {
+                position: absolute;
+                top: 80px;
+                left: 232px;
             }
-        }
+        </style>
+        <div id="console">
+            <canvas id="gbscreen" width="320" height="256"></canvas>
+        </div>
+        `;
+
+        this.canvas = this.root.getElementById("gbscreen");
+        this.ctx = this.canvas.getContext("2d");
+        this.ctx.scale(2, 2);
+        this.ctx.imageSmoothingEnabled = false;
+
+        this.imageData = this.ctx.getImageData(0, 0, 160, 128);
+
+        this.buttonData = 0b11111111;
+        this.lastTimestamp = 0;
+        this.requestId;
+
+        this.pointerPresses = {};
+
+        document.addEventListener("keydown", event => {
+            for (var i = 0; i < keymap.length; i++) {
+                for (var code of keymap[i]) {
+                    if (code == event.keyCode) {
+                        event.preventDefault();
+                        this.buttonData &= ~(1 << i);
+                        return;
+                    }
+                }
+            }
+        });
+
+        document.addEventListener("keyup", event => {
+            for (var i = 0; i < keymap.length; i++) {
+                for (var code of keymap[i]) {
+                    if (code == event.keyCode) {
+                        this.buttonData |= 1 << i;
+                        return;
+                    }
+                }
+            }
+        });
+
+        const controls = this.root.getElementById("console");
+
+        controls.addEventListener("pointerdown", event =>
+            this.handlePointerDown(event)
+        );
+        controls.addEventListener("pointermove", event =>
+            this.handlePointerMove(event)
+        );
+        document.addEventListener("pointerup", event =>
+            this.handlePointerUp(event)
+        );
+        document.addEventListener("pointercancel", event =>
+            this.handlePointerUp(event)
+        );
+
+        this.start();
     }
-});
 
-const controls = document.getElementById("console");
-
-controls.addEventListener("pointerdown", handlePointerDown);
-controls.addEventListener("pointermove", handlePointerMove);
-document.addEventListener("pointerup", handlePointerUp);
-document.addEventListener("pointercancel", handlePointerUp);
-
-function squareDist(touch, x, y) {
-    return (
-        (touch.offsetX - x) * (touch.offsetX - x) +
-        (touch.offsetY - y) * (touch.offsetY - y)
-    );
-}
-
-function handlePointerDown(event) {
-    event.preventDefault();
-    pointerPresses[event.pointerId] = 0b11111111;
-    handlePointerMove(event);
-    updateButtonData();
-}
-
-function handlePointerMove(event) {
-    if (pointerPresses.hasOwnProperty(event.pointerId)) {
-        pointerPresses[event.pointerId] = handlePointer(event);
+    load(program) {
+        if (this.requestId) cancelAnimationFrame(this.requestId);
+        this.start(program);
     }
-    updateButtonData();
-}
 
-function handlePointerUp(event) {
-    delete pointerPresses[event.pointerId];
-    updateButtonData();
-}
+    start(program) {
+        this.gamebuino = Gamebuino.new();
 
-function updateButtonData() {
-    buttonData = 0b11111111;
-    for (let prop in pointerPresses) {
-        buttonData = buttonData & pointerPresses[prop];
-    }
-}
+        let arrayBufferPromise;
 
-function handlePointer(event) {
-    if (squareDist(event, dpadX, dpadY) < dpadDist * dpadDist) {
-        var angle = Math.atan2(dpadY - event.offsetY, event.offsetX - dpadX);
-
-        if (angle < (-7 * Math.PI) / 8) {
-            return 0b11111101;
-        } else if (angle < (-5 * Math.PI) / 8) {
-            return 0b11111100;
-        } else if (angle < (-3 * Math.PI) / 8) {
-            return 0b11111110;
-        } else if (angle < -Math.PI / 8) {
-            return 0b11111010;
-        } else if (angle < Math.PI / 8) {
-            return 0b11111011;
-        } else if (angle < (3 * Math.PI) / 8) {
-            return 0b11110011;
-        } else if (angle < (5 * Math.PI) / 8) {
-            return 0b11110111;
-        } else if (angle < (7 * Math.PI) / 8) {
-            return 0b11110101;
+        if (program) {
+            arrayBufferPromise = Promise.resolve(program);
         } else {
-            return 0b11111101;
+            arrayBufferPromise = fetch(
+                "https://raw.githubusercontent.com/Rodot/Games-META/master/binaries/METAtris/METAtris.bin"
+            ).then(response => response.arrayBuffer());
         }
-    } else if (squareDist(event, aX, aY) < btnDist * btnDist) {
-        return 0b11101111;
-    } else if (squareDist(event, bX, bY) < btnDist * btnDist) {
-        return 0b11011111;
-    } else if (squareDist(event, menuX, menuY) < btnDist * btnDist) {
-        return 0b10111111;
-    } else if (squareDist(event, homeX, homeY) < btnDist * btnDist) {
-        return 0b01111111;
+
+        arrayBufferPromise.then(buffer => {
+            this.gamebuino.load_program(new Uint8Array(buffer), 0x4000);
+            this.step();
+        });
     }
 
-    return 0b11111111;
-}
+    step(timestamp) {
+        const goalTicksPerSecond = 20000000;
+        const maxIterations = goalTicksPerSecond / 30;
+        const delta = timestamp - this.lastTimestamp;
+        this.lastTimestamp = timestamp;
+        let iterations = (delta * goalTicksPerSecond) / 1000;
+        if (iterations > maxIterations) iterations = maxIterations;
 
-function start(program) {
-    gamebuino = Gamebuino.new();
+        this.gamebuino.run(iterations, this.buttonData);
 
-    let arrayBufferPromise;
+        let buf8 = new Uint8Array(
+            memory.buffer,
+            this.gamebuino.screen_data(),
+            160 * 128 * 4
+        );
+        this.imageData.data.set(buf8);
+        this.ctx.putImageData(this.imageData, 0, 0);
+        this.ctx.drawImage(this.canvas, 0, 0);
 
-    if (program) {
-        arrayBufferPromise = Promise.resolve(program);
-    } else {
-        arrayBufferPromise = fetch(
-            "https://raw.githubusercontent.com/Rodot/Games-META/master/binaries/METAtris/METAtris.bin"
-        ).then(response => response.arrayBuffer());
+        this.requestId = requestAnimationFrame(t => this.step(t));
     }
 
-    arrayBufferPromise.then(buffer => {
-        gamebuino.load_program(new Uint8Array(buffer), 0x4000);
-        step();
-    });
+    squareDist(touch, x, y) {
+        return (
+            (touch.offsetX - x) * (touch.offsetX - x) +
+            (touch.offsetY - y) * (touch.offsetY - y)
+        );
+    }
+
+    handlePointerDown(event) {
+        event.preventDefault();
+        this.pointerPresses[event.pointerId] = 0b11111111;
+        this.handlePointerMove(event);
+        this.updateButtonData();
+    }
+
+    handlePointerMove(event) {
+        if (this.pointerPresses.hasOwnProperty(event.pointerId)) {
+            this.pointerPresses[event.pointerId] = this.handlePointer(event);
+        }
+        this.updateButtonData();
+    }
+
+    handlePointerUp(event) {
+        delete this.pointerPresses[event.pointerId];
+        this.updateButtonData();
+    }
+
+    updateButtonData() {
+        this.buttonData = 0b11111111;
+        for (let prop in this.pointerPresses) {
+            this.buttonData &= this.pointerPresses[prop];
+        }
+    }
+
+    handlePointer(event) {
+        if (this.squareDist(event, dpadX, dpadY) < dpadDist * dpadDist) {
+            var angle = Math.atan2(
+                dpadY - event.offsetY,
+                event.offsetX - dpadX
+            );
+
+            if (angle < (-7 * Math.PI) / 8) {
+                return 0b11111101;
+            } else if (angle < (-5 * Math.PI) / 8) {
+                return 0b11111100;
+            } else if (angle < (-3 * Math.PI) / 8) {
+                return 0b11111110;
+            } else if (angle < -Math.PI / 8) {
+                return 0b11111010;
+            } else if (angle < Math.PI / 8) {
+                return 0b11111011;
+            } else if (angle < (3 * Math.PI) / 8) {
+                return 0b11110011;
+            } else if (angle < (5 * Math.PI) / 8) {
+                return 0b11110111;
+            } else if (angle < (7 * Math.PI) / 8) {
+                return 0b11110101;
+            } else {
+                return 0b11111101;
+            }
+        } else if (this.squareDist(event, aX, aY) < btnDist * btnDist) {
+            return 0b11101111;
+        } else if (this.squareDist(event, bX, bY) < btnDist * btnDist) {
+            return 0b11011111;
+        } else if (this.squareDist(event, menuX, menuY) < btnDist * btnDist) {
+            return 0b10111111;
+        } else if (this.squareDist(event, homeX, homeY) < btnDist * btnDist) {
+            return 0b01111111;
+        }
+
+        return 0b11111111;
+    }
 }
 
-function step(timestamp) {
-    const goalTicksPerSecond = 20000000;
-    const maxIterations = goalTicksPerSecond / 30;
-    let delta = timestamp - lastTimestamp;
-    lastTimestamp = timestamp;
-    let iterations = (delta * goalTicksPerSecond) / 1000;
-    if (iterations > maxIterations) iterations = maxIterations;
-
-    gamebuino.run(iterations, buttonData);
-
-    let buf8 = new Uint8Array(
-        memory.buffer,
-        gamebuino.screen_data(),
-        160 * 128 * 4
-    );
-    imageData.data.set(buf8);
-    ctx.putImageData(imageData, 0, 0);
-    ctx.drawImage(canvas, 0, 0);
-
-    requestId = requestAnimationFrame(step);
-}
+customElements.define("gamebuino-emulator", GamebuinoEmulator);
