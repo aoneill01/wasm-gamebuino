@@ -133,13 +133,10 @@ class GamebuinoEmulator extends HTMLElement {
     }
 
     load(program) {
-        if (this.requestId) cancelAnimationFrame(this.requestId);
         this.start(program);
     }
 
     start(program) {
-        this.gamebuino = Gamebuino.new();
-
         let arrayBufferPromise;
 
         if (program) {
@@ -150,6 +147,8 @@ class GamebuinoEmulator extends HTMLElement {
         }
 
         arrayBufferPromise.then(buffer => {
+            if (this.requestId) cancelAnimationFrame(this.requestId);
+            this.gamebuino = Gamebuino.new();
             this.gamebuino.load_program(new Uint8Array(buffer), 0x4000);
             this.step();
         });

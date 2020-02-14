@@ -1,18 +1,41 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=808, user-scalable=no">
+  <meta name="Description" content="Gamebuino emulator">
   <title>Gamebuino Emulator</title>
   <style>
     body {
       margin: 10px;
       padding: 0;
-      background-color: #4485cf;
-      color: #004385;
+      background-color: #5391d8;
+      color: #012141;
       font-size: 20px;
       font-family: 'Open Sans', sans-serif;
+    }
+
+    a {
+      color: #012141;
+      text-decoration: none;
+    }
+
+    a:hover {
+      color: #004385;
+      text-decoration: none;
+    }
+
+    #info {
+      display: flex;
+    }
+
+    #info>div {
+      margin-right: 24px;
+    }
+
+    ul {
+      margin-top: 4px;
     }
   </style>
 </head>
@@ -21,41 +44,77 @@
   <gamebuino-emulator src="https://raw.githubusercontent.com/Rodot/Games-META/master/binaries/METAtris/METAtris.bin">
   </gamebuino-emulator>
 
-  <table>
-    <thead>
-      <tr>
-        <th>Key</th>
-        <th>Button</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td>w</td>
-        <td>Up</td>
-      </tr>
-      <tr>
-        <td>a</td>
-        <td>Left</td>
-      </tr>
-      <tr>
-        <td>s</td>
-        <td>Down</td>
-      </tr>
-      <tr>
-        <td>d</td>
-        <td>Right</td>
-      </tr>
-      <tr>
-        <td>j</td>
-        <td>A</td>
-      </tr>
-      <tr>
-        <td>k</td>
-        <td>B</td>
-      </tr>
-    </tbody>
-  </table>
-  <div>Upload Game: <input type="file" id="file-upload" /></div>
+  <div id="info">
+    <div>
+      <b>Controls</b>
+      <table>
+        <thead>
+          <tr>
+            <th>Key</th>
+            <th>Button</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>w</td>
+            <td>Up</td>
+          </tr>
+          <tr>
+            <td>a</td>
+            <td>Left</td>
+          </tr>
+          <tr>
+            <td>s</td>
+            <td>Down</td>
+          </tr>
+          <tr>
+            <td>d</td>
+            <td>Right</td>
+          </tr>
+          <tr>
+            <td>j</td>
+            <td>A</td>
+          </tr>
+          <tr>
+            <td>k</td>
+            <td>B</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div><b>Other games</b>
+      <ul>
+        <li><a class="game-link" href="#"
+            data-binary-url="https://raw.githubusercontent.com/Rodot/Games-META/master/binaries/CatsAndCoinsDemo/CatsAndCoinsDemo.bin">Cats
+            and Coins</a></li>
+        <li><a class="game-link" href="#"
+            data-binary-url="https://raw.githubusercontent.com/Rodot/Games-META/master/binaries/DefendPluto/DefendPluto.bin">Defend
+            Pluto</a></li>
+        <li><a class="game-link" href="#"
+            data-binary-url="https://raw.githubusercontent.com/Rodot/Games-META/master/binaries/METAtris/METAtris.bin">METAtris</a>
+        </li>
+        <li><a class="game-link" href="#"
+            data-binary-url="https://raw.githubusercontent.com/Rodot/Games-META/master/binaries/PongMETA/PongMETA.bin">Pong
+            META</a></li>
+        <li><a class="game-link" href="#"
+            data-binary-url="https://raw.githubusercontent.com/Rodot/Games-META/master/binaries/Solitaire/Solitaire.bin">Solitaire</a>
+        </li>
+        <li><a class="game-link" href="#"
+            data-binary-url="https://raw.githubusercontent.com/Rodot/Games-META/master/binaries/SuperCrateMETA/SuperCrateMETA.bin">Super
+            Crate META</a></li>
+        <li><a class="game-link" href="#"
+            data-binary-url="https://raw.githubusercontent.com/Rodot/Games-META/master/binaries/UFO-Race/UFO-Race.bin">UFO
+            Race</a></li>
+        <li><a class="game-link" href="#"
+            data-binary-url="https://raw.githubusercontent.com/Rodot/Games-META/master/binaries/picomon/picomon.bin">Picomon</a>
+        </li>
+        <li><a class="game-link" href="#"
+            data-binary-url="https://raw.githubusercontent.com/Rodot/Games-META/master/binaries/reuben3/reuben3.bin">Reuben
+            3</a></li>
+      </ul>
+    </div>
+    <div><b><label for="file-upload">Upload game</label></b><br /><input type="file" id="file-upload" /></div>
+  </div>
   <script src="https://unpkg.com/text-encoding@0.6.4/lib/encoding-indexes.js"></script>
   <script src="https://unpkg.com/text-encoding@0.6.4/lib/encoding.js"></script>
   <script src="./bootstrap.js"></script>
@@ -71,6 +130,13 @@
         this.value = "";
       }
     };
+
+    document.querySelectorAll("a.game-link").forEach(link => {
+      link.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        document.querySelector("gamebuino-emulator").src = link.dataset.binaryUrl;
+      });
+    })
   </script>
 </body>
 
