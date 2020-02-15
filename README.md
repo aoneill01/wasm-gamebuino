@@ -11,8 +11,6 @@ This is an emulator for the [Gamebuino Meta](https://gamebuino.com/). It is a po
 * [npm](https://www.npmjs.com/get-npm)
 
 ```
-wasm-pack build
-cd www
 npm install
-npm start
+npm run build
 ```

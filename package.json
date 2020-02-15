@@ -1,0 +1,27 @@
+{
+  "name": "@aoneill01/wasm-gamebuino",
+  "version": "0.1.0",
+  "description": "Gamebuino emulator",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "build": "wasm-pack build --target web",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "files": [
+    "*.js",
+    "pkg/**"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aoneill01/wasm-gamebuino.git"
+  },
+  "author": "Andy O'Neill <aoneill01@gmail.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/aoneill01/wasm-gamebuino/issues"
+  },
+  "homepage": "https://github.com/aoneill01/wasm-gamebuino#readme"
+}

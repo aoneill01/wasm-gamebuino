@@ -1,5 +1,10 @@
-import { Gamebuino } from "wasm-gamebuino";
-import { memory } from "wasm-gamebuino/wasm_gamebuino_bg";
+import init, { Gamebuino } from "./pkg/wasm_gamebuino.js";
+import background from "./background.js";
+
+let memory;
+let loadWasmPromise = init().then(wasm => {
+    memory = wasm.memory;
+});
 
 const keymap = [
     [83, 40], // down
@@ -47,7 +52,7 @@ class GamebuinoEmulator extends HTMLElement {
             #console {
                 width: 788px;
                 height: 428px;
-                background-image: url(console.png);
+                background-image: url('${background}');
                 position: relative;
             }
 
@@ -129,11 +134,7 @@ class GamebuinoEmulator extends HTMLElement {
     }
 
     attributeChangedCallback(name, oldValue, newValue) {
-        this.load();
-    }
-
-    load(program) {
-        this.start(program);
+        this.start();
     }
 
     start(program) {
@@ -146,12 +147,14 @@ class GamebuinoEmulator extends HTMLElement {
                 .then(response => response.arrayBuffer());
         }
 
-        arrayBufferPromise.then(buffer => {
-            if (this.requestId) cancelAnimationFrame(this.requestId);
-            this.gamebuino = Gamebuino.new();
-            this.gamebuino.load_program(new Uint8Array(buffer), 0x4000);
-            this.step();
-        });
+        Promise.all([arrayBufferPromise, loadWasmPromise])
+            .then(([buffer]) => {
+                if (this.requestId) cancelAnimationFrame(this.requestId);
+                this.gamebuino = Gamebuino.new();
+                this.gamebuino.load_program(new Uint8Array(buffer), 0x4000);
+                this.step();
+            }
+        );
     }
 
     step(timestamp) {
