@@ -2,7 +2,9 @@
   "name": "@aoneill01/wasm-gamebuino",
   "version": "0.1.0",
   "description": "Gamebuino emulator",
+  "type": "module",
   "main": "index.js",
+  "module": "index.js",
   "directories": {
     "test": "tests"
   },
