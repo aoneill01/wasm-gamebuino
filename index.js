@@ -133,6 +133,24 @@ class GamebuinoEmulator extends HTMLElement {
         return ["src"];
     }
 
+    get buttonState() {
+        if (!navigator || !navigator.getGamepads) return this.buttonData;
+        const gamepad = navigator.getGamepads()[0];
+        if (!gamepad) return this.buttonData;
+
+        let gamepadData = 0b11111111;
+        if (gamepad.axes[0] < -.9) gamepadData &= 0b11111101;
+        if (gamepad.axes[0] > .9) gamepadData &= 0b11111011;
+        if (gamepad.axes[1] < -.9) gamepadData &= 0b11110111;
+        if (gamepad.axes[1] > .9) gamepadData &= 0b11111110;
+        if (gamepad.buttons[1].pressed) gamepadData &= 0b11011111;
+        if (gamepad.buttons[2].pressed) gamepadData &= 0b11101111;
+        if (gamepad.buttons[8].pressed) gamepadData &= 0b10111111;
+        if (gamepad.buttons[9].pressed) gamepadData &= 0b01111111;
+
+        return this.buttonData & gamepadData;
+    }
+
     attributeChangedCallback(name, oldValue, newValue) {
         this.start();
     }
@@ -165,7 +183,7 @@ class GamebuinoEmulator extends HTMLElement {
         let iterations = (delta * goalTicksPerSecond) / 1000;
         if (iterations > maxIterations) iterations = maxIterations;
 
-        this.gamebuino.run(iterations, this.buttonData);
+        this.gamebuino.run(iterations, this.buttonState);
 
         let buf8 = new Uint8Array(
             memory.buffer,
