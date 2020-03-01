@@ -139,12 +139,12 @@ class GamebuinoEmulator extends HTMLElement {
         if (!gamepad) return this.buttonData;
 
         let gamepadData = 0b11111111;
-        if (gamepad.axes[0] < -.9) gamepadData &= 0b11111101;
-        if (gamepad.axes[0] > .9) gamepadData &= 0b11111011;
-        if (gamepad.axes[1] < -.9) gamepadData &= 0b11110111;
-        if (gamepad.axes[1] > .9) gamepadData &= 0b11111110;
-        if (gamepad.buttons[1].pressed) gamepadData &= 0b11011111;
-        if (gamepad.buttons[2].pressed) gamepadData &= 0b11101111;
+        if (gamepad.axes[0] < -.9 || gamepad.buttons[14].pressed) gamepadData &= 0b11111101;
+        if (gamepad.axes[0] > .9 || gamepad.buttons[15].pressed) gamepadData &= 0b11111011;
+        if (gamepad.axes[1] < -.9 || gamepad.buttons[12].pressed) gamepadData &= 0b11110111;
+        if (gamepad.axes[1] > .9 || gamepad.buttons[13].pressed) gamepadData &= 0b11111110;
+        if (gamepad.buttons[1].pressed || gamepad.buttons[3].pressed) gamepadData &= 0b11011111;
+        if (gamepad.buttons[0].pressed || gamepad.buttons[2].pressed) gamepadData &= 0b11101111;
         if (gamepad.buttons[8].pressed) gamepadData &= 0b10111111;
         if (gamepad.buttons[9].pressed) gamepadData &= 0b01111111;
 
