@@ -9,20 +9,24 @@ This is an emulator for the [Gamebuino Meta](https://gamebuino.com/). It is a po
 ## Usage
 
 ```html
-<gamebuino-emulator src="https://raw.githubusercontent.com/aoneill01/meta-solitaire/master/binaries/Solitaire/SOLITAIRE.BIN"></gamebuino-emulator>
+<gamebuino-emulator
+    src="https://raw.githubusercontent.com/aoneill01/meta-solitaire/master/binaries/Solitaire/SOLITAIRE.BIN"
+></gamebuino-emulator>
 
-<script src="https://unpkg.com/@aoneill01/wasm-gamebuino" type="module"></script>
+<script
+    src="https://unpkg.com/@aoneill01/wasm-gamebuino"
+    type="module"
+></script>
 ```
 
 ## Building
 
 ### Pre-requisisites
 
-* [Rust](https://www.rust-lang.org/tools/install)
-* [wasm-pack](https://rustwasm.github.io/wasm-pack/installer/)
-* [npm](https://www.npmjs.com/get-npm)
+-   [Rust](https://www.rust-lang.org/tools/install)
+-   [wasm-pack](https://rustwasm.github.io/wasm-pack/installer/)
+-   [npm](https://www.npmjs.com/get-npm)
 
 ```
-npm install
-npm run build
+npm run start
 ```

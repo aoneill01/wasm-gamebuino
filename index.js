@@ -168,6 +168,7 @@ class GamebuinoEmulator extends HTMLElement {
         Promise.all([arrayBufferPromise, loadWasmPromise])
             .then(([buffer]) => {
                 if (this.requestId) cancelAnimationFrame(this.requestId);
+                if (this.gamebuino) this.gamebuino.free();
                 this.gamebuino = Gamebuino.new();
                 this.gamebuino.load_program(new Uint8Array(buffer), 0x4000);
                 this.step();
