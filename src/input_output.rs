@@ -10,7 +10,7 @@ pub struct St7735 {
     arg_index: u8,
     last_command: u8,
     tmp_data: u8,
-    data: Vec<u32>,
+    image_data: [u32; St7735::WIDTH * St7735::HEIGHT],
 }
 
 impl St7735 {
@@ -31,12 +31,12 @@ impl St7735 {
             arg_index: 0,
             last_command: 0,
             tmp_data: 0,
-            data: vec![0xff000000; St7735::WIDTH * St7735::HEIGHT],
+            image_data: [0; St7735::WIDTH * St7735::HEIGHT],
         }
     }
 
-    pub fn screen_data(&self) -> *const u32 {
-        self.data.as_ptr()
+    pub fn image_pointer(&self) -> *const u32 {
+        self.image_data.as_ptr()
     }
 
     pub fn byte_received(&mut self, value: u8, porta: &PortRegisters, portb: &PortRegisters) {
@@ -53,14 +53,14 @@ impl St7735 {
                         let r = (0b1111100000000000 & pixel_data) >> 8;
                         let g = (0b0000011111100000 & pixel_data) >> 3;
                         let b = (0b0000000000011111 & pixel_data) << 3;
-                        let color = (255 << 24) |    // alpha
-                                    (b << 16) |    // blue
-                                    (g <<  8) |    // green
-                                    r; // red
+                        let color = (255 << 24) | // alpha
+                                    (b   << 16) | // blue
+                                    (g   <<  8) | // green
+                                     r; // red
                         let base_index = self.y as usize * St7735::WIDTH + self.x as usize;
 
                         if base_index < St7735::WIDTH * St7735::HEIGHT {
-                            self.data[base_index] = color;
+                            self.image_data[base_index] = color;
                         }
 
                         self.x += 1;

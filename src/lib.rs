@@ -215,8 +215,8 @@ impl Gamebuino {
         }
     }
 
-    pub fn screen_data(&self) -> *const u32 {
-        self.screen.screen_data()
+    pub fn image_pointer(&self) -> *const u32 {
+        self.screen.image_pointer()
     }
 
     fn increment_pc(&mut self) {

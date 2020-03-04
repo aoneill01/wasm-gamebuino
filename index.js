@@ -186,9 +186,9 @@ class GamebuinoEmulator extends HTMLElement {
 
         this.gamebuino.run(iterations, this.buttonState);
 
-        let buf8 = new Uint8Array(
+        const buf8 = new Uint8ClampedArray(
             memory.buffer,
-            this.gamebuino.screen_data(),
+            this.gamebuino.image_pointer(),
             160 * 128 * 4
         );
         this.imageData.data.set(buf8);
