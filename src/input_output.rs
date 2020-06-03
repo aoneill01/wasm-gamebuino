@@ -16,7 +16,7 @@ pub struct St7735 {
 impl St7735 {
     const CASET: u8 = 0x2a; // Column address set command
     const RASET: u8 = 0x2b; // Row address set command
-    const RAMWR: u8 = 0x2c; // Memory write comman
+    const RAMWR: u8 = 0x2c; // Memory write command
     const WIDTH: usize = 160; // Screen width in pixels
     const HEIGHT: usize = 128; // Screen height in pixels
 

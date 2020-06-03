@@ -32,15 +32,20 @@ pub struct Gamebuino {
     sram: [u8; 0x8000],
     tick_count: u64,
     program_offset: u32,
-    systic_vector: u32,
+    systick_vector: u32,
     systick_trigger: isize,
     dmac_vector: u32,
     dmac_interrupt: bool,
     dmac_registers: DmacRegisters,
+    tc5_vector: u32,
+    tc5_trigger: isize,
+    pub tc5_count: u32,
     porta_registers: PortRegisters,
     portb_registers: PortRegisters,
     sercom4: SercomRegisters,
     sercom5: SercomRegisters,
+    sound_data: [u16; 4096],
+    pub sound_samples: usize,
     screen: St7735,
     buttons: Buttons,
     // log: bool,
@@ -49,7 +54,9 @@ pub struct Gamebuino {
 const PC_INDEX: u8 = 15;
 const LR_INDEX: u8 = 14;
 const SP_INDEX: u8 = 13;
-const SYSTICK_COUNTDOWN: isize = 20000;
+const GOAL_TICKS_PER_SECOND: isize = 20000000;
+const SYSTICK_COUNTDOWN: isize = GOAL_TICKS_PER_SECOND / 1000;
+const TC5_COUNTDOWN: isize = GOAL_TICKS_PER_SECOND / 44100;
 
 #[wasm_bindgen]
 impl Gamebuino {
@@ -68,15 +75,20 @@ impl Gamebuino {
             sram: [0xff; 0x8000],
             tick_count: 0,
             program_offset: 0,
-            systic_vector: 0,
+            systick_vector: 0,
             systick_trigger: SYSTICK_COUNTDOWN,
             dmac_vector: 0,
             dmac_interrupt: false,
             dmac_registers: DmacRegisters::new(),
+            tc5_vector: 0,
+            tc5_trigger: TC5_COUNTDOWN,
+            tc5_count: 0,
             porta_registers: PortRegisters::new(),
             portb_registers: PortRegisters::new(),
             sercom4: SercomRegisters::new(),
             sercom5: SercomRegisters::new(),
+            sound_data: [0; 4096],
+            sound_samples: 0,
             screen: St7735::new(),
             buttons: Buttons::new(),
             // log: false,
@@ -136,39 +148,28 @@ impl Gamebuino {
     fn reset(&mut self) {
         self.set_register(SP_INDEX, self.fetch_word(0x0000 + self.program_offset));
         self.set_register(LR_INDEX, 0xffffffff);
-        self.set_register(PC_INDEX, self.fetch_word(0x0004 + self.program_offset) & !1);
+        self.set_register(PC_INDEX, self.read_vector_table(1));
         self.increment_pc();
-        self.systic_vector = self.fetch_word(0x003C + self.program_offset) & !1;
-        self.dmac_vector = self.fetch_word(0x0058 + self.program_offset) & !1;
+        self.systick_vector = self.read_vector_table(15);
+        self.dmac_vector = self.read_vector_table(22);
+        self.tc5_vector = self.read_vector_table(36);
+    }
+
+    fn read_vector_table(&self, exception_number: u32) -> u32 {
+        let pointer_size = 4;
+        self.fetch_word(exception_number * pointer_size + self.program_offset) & !1
     }
 
     pub fn step(&mut self) {
         if self.dmac_interrupt {
             self.dmac_interrupt = false;
-            self.push_stack(self.cond_reg.to_word());
-            self.push_stack(self.read_register(PC_INDEX));
-            self.push_stack(self.read_register(LR_INDEX));
-            self.push_stack(self.read_register(12));
-            self.push_stack(self.read_register(3));
-            self.push_stack(self.read_register(2));
-            self.push_stack(self.read_register(1));
-            self.push_stack(self.read_register(0));
-            self.set_register(PC_INDEX, self.dmac_vector);
-            self.set_register(LR_INDEX, 0xfffffff9);
-            self.increment_pc();
+            self.handle_interrupt(self.dmac_vector);
         } else if self.systick_trigger <= 0 {
             self.systick_trigger = SYSTICK_COUNTDOWN;
-            self.push_stack(self.cond_reg.to_word());
-            self.push_stack(self.read_register(PC_INDEX));
-            self.push_stack(self.read_register(LR_INDEX));
-            self.push_stack(self.read_register(12));
-            self.push_stack(self.read_register(3));
-            self.push_stack(self.read_register(2));
-            self.push_stack(self.read_register(1));
-            self.push_stack(self.read_register(0));
-            self.set_register(PC_INDEX, self.systic_vector);
-            self.set_register(LR_INDEX, 0xfffffff9);
-            self.increment_pc();
+            self.handle_interrupt(self.systick_vector);
+        } else if self.tc5_trigger <= 0 {
+            self.tc5_trigger = TC5_COUNTDOWN;
+            self.handle_interrupt(self.tc5_vector);
         }
 
         let mut addr = self.read_register(PC_INDEX) - 2;
@@ -206,8 +207,23 @@ impl Gamebuino {
         // }
     }
 
+    fn handle_interrupt(&mut self, vector_address: u32) {
+        self.push_stack(self.cond_reg.to_word());
+        self.push_stack(self.read_register(PC_INDEX));
+        self.push_stack(self.read_register(LR_INDEX));
+        self.push_stack(self.read_register(12));
+        self.push_stack(self.read_register(3));
+        self.push_stack(self.read_register(2));
+        self.push_stack(self.read_register(1));
+        self.push_stack(self.read_register(0));
+        self.set_register(PC_INDEX, vector_address);
+        self.set_register(LR_INDEX, 0xfffffff9);
+        self.increment_pc();
+    }
+
     pub fn run(&mut self, steps: usize, button_data: u8) {
         self.buttons.button_data = button_data;
+        self.sound_samples = 0;
 
         let goal = self.tick_count + steps as u64;
         while self.tick_count < goal {
@@ -219,9 +235,14 @@ impl Gamebuino {
         self.screen.image_pointer()
     }
 
+    pub fn sound_data_pointer(&self) -> *const u16 {
+        self.sound_data.as_ptr()
+    }
+
     fn increment_pc(&mut self) {
         self.tick_count += 1;
         self.systick_trigger -= 1;
+        self.tc5_trigger -= 1;
         self.registers[PC_INDEX as usize] += 2;
     }
 
@@ -401,6 +422,12 @@ impl Gamebuino {
             let addr = (addr - 0x20000000) % 0x8000;
             self.sram[addr] = (value & 0xff) as u8;
             self.sram[addr + 1] = ((value >> 8) & 0xff) as u8;
+        } else if addr < 0x60000000 {
+            // Assume that any writes to DAC.DATA are for audio at 44100 Hz
+            if addr == 0x42004808 && self.sound_samples < self.sound_data.len() {
+                self.sound_data[self.sound_samples] = value as u16;
+                self.sound_samples += 1;
+            }
         }
     }
 

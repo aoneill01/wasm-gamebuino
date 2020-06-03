@@ -80,7 +80,11 @@ class GamebuinoEmulator extends HTMLElement {
 
         this.pointerPresses = {};
 
+        this.nextAudioStart = 0;
+
         document.addEventListener("keydown", event => {
+            this.initAudio();
+
             for (var i = 0; i < keymap.length; i++) {
                 for (var code of keymap[i]) {
                     if (code == event.keyCode) {
@@ -105,9 +109,12 @@ class GamebuinoEmulator extends HTMLElement {
 
         const controls = this.root.getElementById("console");
 
-        controls.addEventListener("pointerdown", event =>
+        controls.addEventListener("pointerdown", event => {
+            this.initAudio();
+            
             this.handlePointerDown(event)
-        );
+        });
+
         controls.addEventListener("pointermove", event =>
             this.handlePointerMove(event)
         );
@@ -171,6 +178,7 @@ class GamebuinoEmulator extends HTMLElement {
                 if (this.gamebuino) this.gamebuino.free();
                 this.gamebuino = Gamebuino.new();
                 this.gamebuino.load_program(new Uint8Array(buffer), 0x4000);
+                this.nextAudioStart = 0;
                 this.step();
             }
         );
@@ -194,6 +202,8 @@ class GamebuinoEmulator extends HTMLElement {
         this.imageData.data.set(buf8);
         this.ctx.putImageData(this.imageData, 0, 0);
         this.ctx.drawImage(this.canvas, 0, 0);
+
+        this.handleAudio();
 
         this.requestId = requestAnimationFrame(t => this.step(t));
     }
@@ -268,6 +278,34 @@ class GamebuinoEmulator extends HTMLElement {
         }
 
         return 0b11111111;
+    }
+
+    initAudio() {
+        if (!this.audioCtx) {
+            this.audioCtx = new AudioContext({ sampleRate: 44100 });
+        }
+    }
+
+    handleAudio() {
+        if (!this.audioCtx) return;
+        const frameCount = this.gamebuino.sound_samples;
+        if (frameCount === 0) return;
+        const raw = new Uint16Array(memory.buffer, this.gamebuino.sound_data_pointer(), frameCount);
+        const audioBuffer = this.audioCtx.createBuffer(1, frameCount, this.audioCtx.sampleRate);
+        const channelBuffer = audioBuffer.getChannelData(0);
+        const source = this.audioCtx.createBufferSource();
+
+        for (let i = 0; i < frameCount; i++) {
+            channelBuffer[i] = raw[i] / 1024;
+        }
+        
+        source.buffer = audioBuffer;
+        source.connect(this.audioCtx.destination);
+        if (this.audioCtx.currentTime > this.nextAudioStart) {
+            this.nextAudioStart = this.audioCtx.currentTime;
+        }
+        source.start(this.nextAudioStart);
+        this.nextAudioStart += audioBuffer.duration;
     }
 }
 
