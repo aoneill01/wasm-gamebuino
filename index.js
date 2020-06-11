@@ -281,8 +281,10 @@ class GamebuinoEmulator extends HTMLElement {
     }
 
     initAudio() {
-        if (!this.audioCtx) {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!this.audioCtx && AudioContext) {
             this.audioCtx = new AudioContext({ sampleRate: 44100 });
+            this.audioCtx.resume();
         }
     }
 
