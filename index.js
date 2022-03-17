@@ -286,18 +286,10 @@ class GamebuinoEmulator extends HTMLElement {
 
     initAudio() {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
-        if (AudioContext && !this.audioCtx || this.audioCtx.sampleRate != this.gamebuino.sample_rate) {
-            console.log("Sample rate = ", this.gamebuino.sample_rate);
-            if (this.audioCtx) {
-                console.log("Changing audio context");
-                this.audioCtx.close();
-            }
+        if (!this.audioCtx && AudioContext) {
+            console.log("Audio sample rate = ", this.gamebuino.sample_rate);
             this.audioCtx = new AudioContext({ sampleRate: this.gamebuino.sample_rate });
             this.audioCtx.resume();
-
-            this.totalSamples = 0;
-            this.audioStart = undefined;
-            this.lastLog = Date.now();
         }
     }
 
@@ -309,19 +301,6 @@ class GamebuinoEmulator extends HTMLElement {
         const audioBuffer = this.audioCtx.createBuffer(1, frameCount, this.audioCtx.sampleRate);
         const channelBuffer = audioBuffer.getChannelData(0);
         const source = this.audioCtx.createBufferSource();
-
-        const now = Date.now();
-        const delta = now - this.lastLog;
-        if (delta > 1000) {
-            if (!this.audioStart) {
-                this.audioStart = now;
-                this.totalSamples = 0;
-            } else {
-                console.log("sample rate [kHz]= ", this.totalSamples / (now - this.audioStart));
-            }
-            this.lastLog = now;
-        }
-        this.totalSamples += frameCount;
 
         for (let i = 0; i < frameCount; i++) {
             channelBuffer[i] = raw[i] / 1024;
