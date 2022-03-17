@@ -267,3 +267,11 @@ impl Peripheral for SercomRegisters {
         }
     }
 }
+
+pub struct TcRegisters {
+}
+
+impl TcRegisters {
+    const TC5_ADDRESS: u32 = 0x42003400;
+    pub const TC5_CC_ADDRESS: u32 = TcRegisters::TC5_ADDRESS + 0x18;
+}

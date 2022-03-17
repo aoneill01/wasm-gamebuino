@@ -111,7 +111,7 @@ class GamebuinoEmulator extends HTMLElement {
 
         controls.addEventListener("pointerdown", event => {
             this.initAudio();
-            
+
             this.handlePointerDown(event)
         });
 
@@ -178,6 +178,10 @@ class GamebuinoEmulator extends HTMLElement {
                 if (this.gamebuino) this.gamebuino.free();
                 this.gamebuino = Gamebuino.new();
                 this.gamebuino.load_program(new Uint8Array(buffer), 0x4000);
+                if (this.audioCtx) {
+                    this.audioCtx.close();
+                    this.audioCtx = undefined;
+                }
                 this.nextAudioStart = 0;
                 this.step();
             }
@@ -282,9 +286,18 @@ class GamebuinoEmulator extends HTMLElement {
 
     initAudio() {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
-        if (!this.audioCtx && AudioContext) {
-            this.audioCtx = new AudioContext({ sampleRate: 44100 });
+        if (AudioContext && !this.audioCtx || this.audioCtx.sampleRate != this.gamebuino.sample_rate) {
+            console.log("Sample rate = ", this.gamebuino.sample_rate);
+            if (this.audioCtx) {
+                console.log("Changing audio context");
+                this.audioCtx.close();
+            }
+            this.audioCtx = new AudioContext({ sampleRate: this.gamebuino.sample_rate });
             this.audioCtx.resume();
+
+            this.totalSamples = 0;
+            this.audioStart = undefined;
+            this.lastLog = Date.now();
         }
     }
 
@@ -297,10 +310,23 @@ class GamebuinoEmulator extends HTMLElement {
         const channelBuffer = audioBuffer.getChannelData(0);
         const source = this.audioCtx.createBufferSource();
 
+        const now = Date.now();
+        const delta = now - this.lastLog;
+        if (delta > 1000) {
+            if (!this.audioStart) {
+                this.audioStart = now;
+                this.totalSamples = 0;
+            } else {
+                console.log("sample rate [kHz]= ", this.totalSamples / (now - this.audioStart));
+            }
+            this.lastLog = now;
+        }
+        this.totalSamples += frameCount;
+
         for (let i = 0; i < frameCount; i++) {
             channelBuffer[i] = raw[i] / 1024;
         }
-        
+
         source.buffer = audioBuffer;
         source.connect(this.audioCtx.destination);
         if (this.audioCtx.currentTime > this.nextAudioStart) {
