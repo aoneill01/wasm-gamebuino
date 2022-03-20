@@ -111,7 +111,7 @@ class GamebuinoEmulator extends HTMLElement {
 
         controls.addEventListener("pointerdown", event => {
             this.initAudio();
-            
+
             this.handlePointerDown(event)
         });
 
@@ -178,6 +178,10 @@ class GamebuinoEmulator extends HTMLElement {
                 if (this.gamebuino) this.gamebuino.free();
                 this.gamebuino = Gamebuino.new();
                 this.gamebuino.load_program(new Uint8Array(buffer), 0x4000);
+                if (this.audioCtx) {
+                    this.audioCtx.close();
+                    this.audioCtx = undefined;
+                }
                 this.nextAudioStart = 0;
                 this.step();
             }
@@ -283,7 +287,8 @@ class GamebuinoEmulator extends HTMLElement {
     initAudio() {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         if (!this.audioCtx && AudioContext) {
-            this.audioCtx = new AudioContext({ sampleRate: 44100 });
+            console.log("Audio sample rate = ", this.gamebuino.sample_rate);
+            this.audioCtx = new AudioContext({ sampleRate: this.gamebuino.sample_rate });
             this.audioCtx.resume();
         }
     }
@@ -300,7 +305,7 @@ class GamebuinoEmulator extends HTMLElement {
         for (let i = 0; i < frameCount; i++) {
             channelBuffer[i] = raw[i] / 1024;
         }
-        
+
         source.buffer = audioBuffer;
         source.connect(this.audioCtx.destination);
         if (this.audioCtx.currentTime > this.nextAudioStart) {

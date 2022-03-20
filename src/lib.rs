@@ -20,7 +20,7 @@ extern crate web_sys;
 
 use input_output::{Buttons, St7735};
 use instruction::Instruction;
-use register::{CondRegister, DmacRegisters, Peripheral, PortRegisters, SercomRegisters};
+use register::{CondRegister, DmacRegisters, Peripheral, PortRegisters, SercomRegisters, TcRegisters};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -39,12 +39,14 @@ pub struct Gamebuino {
     dmac_registers: DmacRegisters,
     tc5_vector: u32,
     tc5_trigger: isize,
+    tc5_countdown: isize,
     porta_registers: PortRegisters,
     portb_registers: PortRegisters,
     sercom4: SercomRegisters,
     sercom5: SercomRegisters,
     sound_data: [u16; 4096],
     pub sound_samples: usize,
+    pub sample_rate: u32,
     screen: St7735,
     buttons: Buttons,
     // log: bool,
@@ -55,7 +57,8 @@ const LR_INDEX: u8 = 14;
 const SP_INDEX: u8 = 13;
 const GOAL_TICKS_PER_SECOND: isize = 20000000;
 const SYSTICK_COUNTDOWN: isize = GOAL_TICKS_PER_SECOND / 1000;
-const TC5_COUNTDOWN: isize = GOAL_TICKS_PER_SECOND / 44100;
+const DEFAULT_SAMPLE_RATE: u32 = 44100;
+const TC5_DEFAULT_COUNTDOWN: isize = GOAL_TICKS_PER_SECOND / DEFAULT_SAMPLE_RATE as isize;
 
 #[wasm_bindgen]
 impl Gamebuino {
@@ -80,13 +83,15 @@ impl Gamebuino {
             dmac_interrupt: false,
             dmac_registers: DmacRegisters::new(),
             tc5_vector: 0,
-            tc5_trigger: TC5_COUNTDOWN,
+            tc5_trigger: TC5_DEFAULT_COUNTDOWN,
             porta_registers: PortRegisters::new(),
             portb_registers: PortRegisters::new(),
             sercom4: SercomRegisters::new(),
             sercom5: SercomRegisters::new(),
             sound_data: [0; 4096],
             sound_samples: 0,
+            sample_rate: DEFAULT_SAMPLE_RATE,
+            tc5_countdown: TC5_DEFAULT_COUNTDOWN,
             screen: St7735::new(),
             buttons: Buttons::new(),
             // log: false,
@@ -166,7 +171,7 @@ impl Gamebuino {
             self.systick_trigger = SYSTICK_COUNTDOWN;
             self.handle_interrupt(self.systick_vector);
         } else if self.tc5_trigger <= 0 {
-            self.tc5_trigger = TC5_COUNTDOWN;
+            self.tc5_trigger = self.tc5_countdown;
             self.handle_interrupt(self.tc5_vector);
         }
 
@@ -421,8 +426,16 @@ impl Gamebuino {
             self.sram[addr] = (value & 0xff) as u8;
             self.sram[addr + 1] = ((value >> 8) & 0xff) as u8;
         } else if addr < 0x60000000 {
-            // Assume that any writes to DAC.DATA are for audio at 44100 Hz
-            if addr == 0x42004808 && self.sound_samples < self.sound_data.len() {
+            if address == TcRegisters::TC5_CC_ADDRESS {
+                // Intercept configuration of audio sample rate
+
+                // Calculation by Gamebuino lib: value = (SystemCoreClock / sampleRate) - 1
+                // with SystemCoreClock equal to 48000000
+                self.sample_rate = 48000000 / (value + 1);
+
+                self.tc5_countdown = GOAL_TICKS_PER_SECOND / self.sample_rate as isize;
+            } else if addr == 0x42004808 && self.sound_samples < self.sound_data.len() {
+                // Writes to DAC.DATA are for audio
                 self.sound_data[self.sound_samples] = value as u16;
                 self.sound_samples += 1;
             }
