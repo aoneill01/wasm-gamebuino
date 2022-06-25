@@ -91,6 +91,10 @@ class GamebuinoEmulator extends HTMLElement {
             }
         });
 
+        window.addEventListener("resize", event => {
+            this.setScale();
+        });
+
         const controls = this.root.getElementById("console");
 
         controls.addEventListener("pointerdown", event => {
@@ -128,8 +132,20 @@ class GamebuinoEmulator extends HTMLElement {
         return this.setAttribute("background", value);
     }
 
+    get fullscreen() {
+        return this.getAttribute("fullscreen");
+    }
+
+    set fullscreen(value) {
+        return this.setAttribute("fullscreen", value);
+    }
+
+    isFullscreen() {
+        return this.fullscreen !== null && this.fullscreen !== undefined;
+    }
+
     static get observedAttributes() {
-        return ["src", "background"];
+        return ["src", "background", "fullscreen"];
     }
 
     get buttonState() {
@@ -153,6 +169,7 @@ class GamebuinoEmulator extends HTMLElement {
     attributeChangedCallback(name, oldValue, newValue) {
         switch(name) {
             case "background":
+            case "fullscreen":
                 this.updateStyle();
                 break;
             case "src":
@@ -161,9 +178,50 @@ class GamebuinoEmulator extends HTMLElement {
         }
     }
 
+    setScale() {
+        const elem = this.root.getElementById("console");
+
+        if (!this.isFullscreen()) {
+            elem.style = "";
+            return;
+        }
+
+        const windowWidth = window.innerWidth && document.documentElement.clientWidth ? Math.min(window.innerWidth, document.documentElement.clientWidth) : window.innerWidth || document.documentElement.clientWidth || document.getElementsByTagName('body')[0].clientWidth;
+        const windowHeight = window.innerHeight && document.documentElement.clientHeight ? Math.min(window.innerHeight, document.documentElement.clientHeight) : window.innerHeight || document.documentElement.clientHeight || document.getElementsByTagName('body')[0].clientHeight;
+        let scale = windowWidth / elem.clientWidth;
+        if (elem.clientHeight * scale > windowHeight)
+          scale = windowHeight / elem.clientHeight;
+
+        const margintop = ((windowHeight - (elem.clientHeight * scale)) / 2);
+        const marginleft = ((windowWidth - (elem.clientWidth * scale)) / 2);
+        elem.style = "position: abosolute; transform-origin: 0 0; top:" + margintop + "px; left:" + marginleft + "px; transform: scale(" + scale + ")";
+    }
+
     updateStyle() {
         if (this.background === "none") {
-            this.root.querySelector("style").textContent = "";
+            if (this.isFullscreen()) {
+                this.root.querySelector("style").textContent = `
+                    #console {
+                        position: fixed;
+                        top: 0;
+                        right: 0;
+                        bottom: 0;
+                        left: 0;
+                        background-color: black;
+                        display: flex;
+                        justify-content: center;
+                        align-items: center;
+                    }
+
+                    #gbscreen {
+                        object-fit: contain;
+                        image-rendering: pixelated;
+                        height: 100%;
+                        width: 100%;
+                    }`;
+            } else {
+                this.root.querySelector("style").textContent = "";
+            }
         } else {
             this.root.querySelector("style").textContent = `
                 :host {
@@ -177,6 +235,7 @@ class GamebuinoEmulator extends HTMLElement {
                     height: 428px;
                     background-image: url('${this.background === "2" ? background2 : background1}');
                     position: relative;
+                    image-rendering: pixelated;
                 }
 
                 #gbscreen {
@@ -185,6 +244,8 @@ class GamebuinoEmulator extends HTMLElement {
                     left: 232px;
                 }`;
         }
+
+        this.setScale();
     }
 
     start(program) {
