@@ -1,5 +1,6 @@
 import init, { Gamebuino } from "./pkg/wasm_gamebuino.js";
-import background from "./background.js";
+import background1 from "./background1.js";
+import background2 from "./background2.js";
 
 let memory;
 let loadWasmPromise = init().then(wasm => {
@@ -43,29 +44,12 @@ class GamebuinoEmulator extends HTMLElement {
 
         this.root.innerHTML = `
         <style>
-            :host {
-                display: inline-block;
-                width: 788px;
-                height: 428px;
-            }
-
-            #console {
-                width: 788px;
-                height: 428px;
-                background-image: url('${background}');
-                position: relative;
-            }
-
-            #gbscreen {
-                position: absolute;
-                top: 80px;
-                left: 232px;
-            }
         </style>
         <div id="console">
             <canvas id="gbscreen" width="320" height="256"></canvas>
         </div>
         `;
+        this.updateStyle();
 
         this.canvas = this.root.getElementById("gbscreen");
         this.ctx = this.canvas.getContext("2d");
@@ -136,8 +120,16 @@ class GamebuinoEmulator extends HTMLElement {
         return this.setAttribute("src", value);
     }
 
+    get background() {
+        return this.getAttribute("background");
+    }
+
+    set background(value) {
+        return this.setAttribute("background", value);
+    }
+
     static get observedAttributes() {
-        return ["src"];
+        return ["src", "background"];
     }
 
     get buttonState() {
@@ -159,7 +151,40 @@ class GamebuinoEmulator extends HTMLElement {
     }
 
     attributeChangedCallback(name, oldValue, newValue) {
-        this.start();
+        switch(name) {
+            case "background":
+                this.updateStyle();
+                break;
+            case "src":
+                this.start();
+                break;
+        }
+    }
+
+    updateStyle() {
+        if (this.background === "none") {
+            this.root.querySelector("style").textContent = "";
+        } else {
+            this.root.querySelector("style").textContent = `
+                :host {
+                    display: inline-block;
+                    width: 788px;
+                    height: 428px;
+                }
+
+                #console {
+                    width: 788px;
+                    height: 428px;
+                    background-image: url('${this.background === "2" ? background2 : background1}');
+                    position: relative;
+                }
+
+                #gbscreen {
+                    position: absolute;
+                    top: 80px;
+                    left: 232px;
+                }`;
+        }
     }
 
     start(program) {
@@ -220,6 +245,9 @@ class GamebuinoEmulator extends HTMLElement {
     }
 
     handlePointerDown(event) {
+        // Ignore if no console is displayed
+        if (this.background === "none") return;
+
         event.preventDefault();
         this.pointerPresses[event.pointerId] = 0b11111111;
         this.handlePointerMove(event);
@@ -227,6 +255,9 @@ class GamebuinoEmulator extends HTMLElement {
     }
 
     handlePointerMove(event) {
+        // Ignore if no console is displayed
+        if (this.background === "none") return;
+
         if (this.pointerPresses.hasOwnProperty(event.pointerId)) {
             this.pointerPresses[event.pointerId] = this.handlePointer(event);
         }
@@ -234,6 +265,9 @@ class GamebuinoEmulator extends HTMLElement {
     }
 
     handlePointerUp(event) {
+        // Ignore if no console is displayed
+        if (this.background === "none") return;
+
         delete this.pointerPresses[event.pointerId];
         this.updateButtonData();
     }
