@@ -117,6 +117,13 @@
       </ul>
     </div>
     <div><b><label for="file-upload">Upload game</label></b><br /><input type="file" id="file-upload" /></div>
+    <div><b>Style</b>
+      <ul>
+        <li><a class="style-link" href="#" data-background="1">Console 1</a></li>
+        <li><a class="style-link" href="#" data-background="2">Console 2</a></li>
+        <li><a class="style-link" href="#" data-background="none">None</a></li>
+      </ul>
+    </div>
   </div>
   <script src="./index.js" type="module"></script>
   <script>
@@ -136,6 +143,13 @@
       link.addEventListener("click", (ev) => {
         ev.preventDefault();
         document.querySelector("gamebuino-emulator").src = link.dataset.binaryUrl;
+      });
+    })
+
+    document.querySelectorAll("a.style-link").forEach(link => {
+      link.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        document.querySelector("gamebuino-emulator").background = link.dataset.background;
       });
     })
   </script>
