@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=808, user-scalable=no">
+  <meta name="Description" content="Gamebuino emulator">
+  <title>Gamebuino Emulator</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #5391d8;
+      overflow: hidden;
+    }
+  </style>
+</head>
+
+<body>
+  <gamebuino-emulator fullscreen background="none" src="https://raw.githubusercontent.com/Rodot/Games-META/master/binaries/METAtris/METAtris.bin">
+  </gamebuino-emulator>
+
+  <script>
+    let emulator = document.querySelector("gamebuino-emulator");
+    var urlParams = new URLSearchParams(window.location.search);
+    emulator.src = urlParams.get("bin") ?? "https://raw.githubusercontent.com/Rodot/Games-META/master/binaries/METAtris/METAtris.bin";
+    emulator.background = urlParams.get("background") ?? "none";
+  </script>
+  <script src="./index.js" type="module"></script>
+</body>
+</html>
