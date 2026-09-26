@@ -520,6 +520,67 @@ impl Gamebuino {
         result
     }
 
+    // Shift helpers follow the ARMv6-M semantics: a shift of 0 leaves the carry
+    // flag unchanged, and shifts of 32 or more are valid for the register forms.
+    fn lsl_and_set_condition(&mut self, rs: u8, rd: u8, offset: u32) {
+        let original = self.read_register(rs);
+        let result = match offset {
+            0 => original,
+            1..=31 => {
+                self.cond_reg.c = original & (1 << (32 - offset)) != 0;
+                original << offset
+            }
+            32 => {
+                self.cond_reg.c = original & 1 != 0;
+                0
+            }
+            _ => {
+                self.cond_reg.c = false;
+                0
+            }
+        };
+        self.set_register(rd, result);
+        self.set_nz(result);
+    }
+
+    fn lsr_and_set_condition(&mut self, rs: u8, rd: u8, offset: u32) {
+        let original = self.read_register(rs);
+        let result = match offset {
+            0 => original,
+            1..=31 => {
+                self.cond_reg.c = original & (1 << (offset - 1)) != 0;
+                original >> offset
+            }
+            32 => {
+                self.cond_reg.c = original & 0x80000000 != 0;
+                0
+            }
+            _ => {
+                self.cond_reg.c = false;
+                0
+            }
+        };
+        self.set_register(rd, result);
+        self.set_nz(result);
+    }
+
+    fn asr_and_set_condition(&mut self, rs: u8, rd: u8, offset: u32) {
+        let original = self.read_register(rs);
+        let result = match offset {
+            0 => original,
+            1..=31 => {
+                self.cond_reg.c = original & (1 << (offset - 1)) != 0;
+                ((original as i32) >> offset) as u32
+            }
+            _ => {
+                self.cond_reg.c = original & 0x80000000 != 0;
+                ((original as i32) >> 31) as u32
+            }
+        };
+        self.set_register(rd, result);
+        self.set_nz(result);
+    }
+
     fn dmac_interrupt(&mut self) {
         self.dmac_interrupt = true;
     }
@@ -527,48 +588,34 @@ impl Gamebuino {
     fn execute_instruction(&mut self, instruction: Instruction) {
         match instruction {
             Instruction::LslImm { rs, rd, offset } => {
-                let original = self.read_register(rs);
-                let result = original << offset;
-                self.set_register(rd, result);
-                self.cond_reg.c = original & (1 << offset) != 0;
-                self.set_nz(result);
+                self.lsl_and_set_condition(rs, rd, offset as u32);
             }
             Instruction::LslReg { rs, rd } => {
-                let offset = self.read_register(rs);
-                let original = self.read_register(rd);
-                let result = original << offset;
-                self.set_register(rd, result);
-                self.cond_reg.c = original & (1 << offset) != 0;
-                self.set_nz(result);
+                self.lsl_and_set_condition(rd, rd, self.read_register(rs) & 0xff);
             }
             Instruction::LsrImm { rs, rd, offset } => {
-                let original = self.read_register(rs);
-                let result = original >> offset;
-                self.set_register(rd, result);
-                self.cond_reg.c = original & (1 << (32 - offset)) != 0;
-                self.set_nz(result);
+                // An immediate of 0 encodes a shift of 32
+                let offset = if offset == 0 { 32 } else { offset as u32 };
+                self.lsr_and_set_condition(rs, rd, offset);
             }
             Instruction::LsrReg { rs, rd } => {
-                let offset = self.read_register(rs);
-                let original = self.read_register(rd);
-                let result = original >> offset;
-                self.set_register(rd, result);
-                self.cond_reg.c = original & (1 << (32 - offset)) != 0;
-                self.set_nz(result);
+                self.lsr_and_set_condition(rd, rd, self.read_register(rs) & 0xff);
             }
             Instruction::AsrImm { rs, rd, offset } => {
-                let original = self.read_register(rs) as i32;
-                let result = (original >> offset) as u32;
-                self.set_register(rd, result);
-                self.cond_reg.c = original & (1 << (offset - 1)) != 0;
-                self.set_nz(result);
+                // An immediate of 0 encodes a shift of 32
+                let offset = if offset == 0 { 32 } else { offset as u32 };
+                self.asr_and_set_condition(rs, rd, offset);
             }
             Instruction::AsrReg { rs, rd } => {
-                let offset = self.read_register(rs);
-                let original = self.read_register(rd) as i32;
-                let result = (original >> offset) as u32;
+                self.asr_and_set_condition(rd, rd, self.read_register(rs) & 0xff);
+            }
+            Instruction::Ror { rs, rd } => {
+                let offset = self.read_register(rs) & 0xff;
+                let result = self.read_register(rd).rotate_right(offset);
+                if offset != 0 {
+                    self.cond_reg.c = result & 0x80000000 != 0;
+                }
                 self.set_register(rd, result);
-                self.cond_reg.c = original & (1 << (offset - 1)) != 0;
                 self.set_nz(result);
             }
             Instruction::AddReg { rs, rd, rn } => {
@@ -934,5 +981,69 @@ impl Gamebuino {
             }
             Instruction::NotImplemented => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn run(instruction: Instruction, rd_value: u32, rs_value: u32, carry: bool) -> (u32, bool) {
+        let mut gamebuino = Gamebuino::new();
+        gamebuino.registers[0] = rd_value;
+        gamebuino.registers[1] = rs_value;
+        gamebuino.cond_reg.c = carry;
+        gamebuino.execute_instruction(instruction);
+        (gamebuino.registers[0], gamebuino.cond_reg.c)
+    }
+
+    #[test]
+    fn asr_imm_32_fills_with_sign() {
+        // `asrs r0, r0, #32` is encoded with an offset of 0; used by __divsi3
+        let asr32 = instruction::parse_instruction(0x1000, 0);
+        assert_eq!(run(asr32, 0xfffffff8, 0, false), (0xffffffff, true));
+        assert_eq!(run(asr32, 8, 0, true), (0, false));
+    }
+
+    #[test]
+    fn lsr_imm_32_clears() {
+        let lsr32 = instruction::parse_instruction(0x0800, 0);
+        assert_eq!(run(lsr32, 0x80000001, 0, false), (0, true));
+    }
+
+    #[test]
+    fn shift_imm_carry() {
+        let lsl = Instruction::LslImm { rs: 0, rd: 0, offset: 1 };
+        assert_eq!(run(lsl, 0x80000001, 0, false), (2, true));
+        let lsr = Instruction::LsrImm { rs: 0, rd: 0, offset: 1 };
+        assert_eq!(run(lsr, 0x80000001, 0, false), (0x40000000, true));
+        let asr = Instruction::AsrImm { rs: 0, rd: 0, offset: 1 };
+        assert_eq!(run(asr, 0x80000002, 0, true), (0xc0000001, false));
+    }
+
+    #[test]
+    fn shift_reg_edge_cases() {
+        let lsl = Instruction::LslReg { rs: 1, rd: 0 };
+        assert_eq!(run(lsl, 0x1, 0, true), (1, true));
+        assert_eq!(run(lsl, 0x1, 32, false), (0, true));
+        assert_eq!(run(lsl, 0x1, 33, true), (0, false));
+        assert_eq!(run(lsl, 0x1, 0x101, false), (2, false));
+        let lsr = Instruction::LsrReg { rs: 1, rd: 0 };
+        assert_eq!(run(lsr, 0x80000000, 32, false), (0, true));
+        assert_eq!(run(lsr, 0x80000000, 40, true), (0, false));
+        let asr = Instruction::AsrReg { rs: 1, rd: 0 };
+        assert_eq!(run(asr, 0x80000000, 0, false), (0x80000000, false));
+        assert_eq!(run(asr, 0x80000000, 100, false), (0xffffffff, true));
+    }
+
+    #[test]
+    fn ror() {
+        // `rors r0, r1`
+        let ror = instruction::parse_instruction(0x41c8, 0);
+        assert_eq!(run(ror, 0x00000001, 1, false), (0x80000000, true));
+        assert_eq!(run(ror, 0x80000002, 1, true), (0x40000001, false));
+        assert_eq!(run(ror, 0x12345678, 0, true), (0x12345678, true));
+        assert_eq!(run(ror, 0x80000000, 32, false), (0x80000000, true));
+        assert_eq!(run(ror, 0x00000001, 0x121, false), (0x80000000, true));
     }
 }

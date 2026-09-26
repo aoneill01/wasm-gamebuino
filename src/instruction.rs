@@ -63,6 +63,10 @@ pub enum Instruction {
         rs: u8,
         rd: u8,
     },
+    Ror {
+        rs: u8,
+        rd: u8,
+    },
     Neg {
         rs: u8,
         rd: u8,
@@ -352,7 +356,7 @@ pub fn parse_instruction(instruction: u16, following_instruction: u16) -> Instru
             0b0100 => Instruction::AsrReg { rd, rs },
             0b0101 => Instruction::Adc { rd, rs },
             0b0110 => Instruction::Sbc { rd, rs },
-            // TODO ror
+            0b0111 => Instruction::Ror { rd, rs },
             0b1000 => Instruction::Tst { rd, rs },
             0b1001 => Instruction::Neg { rd, rs },
             0b1010 => Instruction::CmpReg { rd, rs },
